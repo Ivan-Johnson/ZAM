@@ -1,0 +1,30 @@
+{
+    "managed-datasets": [
+	{
+	    "source": {
+		"pool": "s-root",
+		"dataset": "data/home/i",
+		"windows": [
+		    {"max-age": {"days": 2}, "period": {"minutes": 10}},
+		    {"max-age": {"weeks": 1}, "period": {"hours": 1}}
+		]
+	    },
+	    "destinations": [
+		{
+		    "remote-host": "olympus",
+		    "pool": "o-nas",
+		    "dataset": "backups/s-root",
+		    "windows": [
+			{"max-age": {"weeks": 6}, "period": {"hours": 1}},
+			{"max-age": {"months": 6}, "period": {"days": 1}},
+			{"max-age": {"years": 6}, "period": {"weeks": 1}},
+			{"period": {"months": 1}}
+		    ]
+		}
+	    ],
+	    "snapshot-frequency": {"minutes": "10"},
+	    "replication-frequency": {"hours": "1"},
+	    "prune-frequency": {"hours": "1"}
+	}
+    ]
+}
