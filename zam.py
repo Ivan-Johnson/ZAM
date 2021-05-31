@@ -252,18 +252,17 @@ parser.add_argument('--verbose', '-v', default=LOG_ERROR, action='count', help="
 
 def do_snapshot(mds):
     snapshots=snapshot_t.list(mds.source)
-    now=datetime.datetime.utcnow()
-    if now - snapshots[-1].datetime > mds.snapshot_period:
+    if datetime.datetime.utcnow() - snapshots[-1].datetime > mds.snapshot_period:
         print("Taking snapshot")
         new=snapshot_t.new(mds)
         snapshots.append(new)
-    return snapshots[-1].datetime + mds.snapshot_period - now
+    return snapshots[-1].datetime + mds.snapshot_period
 
 def do_replicate(mds):
-    return datetime.timedelta.max
+    return datetime.datetime.max
 
 def do_prune(mds):
-    return datetime.timedelta.max
+    return datetime.datetime.max
 
 def main():
     args = parser.parse_args()
@@ -277,15 +276,19 @@ def main():
         print(f'config is: {conf}')
 
     while True:
-        next_action = datetime.timedelta.max
+        next_action = datetime.datetime.max
 
         for ele in conf.managed_datasets:
             next_action = min(next_action, do_snapshot(ele))
             next_action = min(next_action, do_replicate(ele))
             next_action = min(next_action, do_prune(ele))
 
-        print(f"sleeping for {next_action.total_seconds()} seconds")
-        time.sleep(next_action.total_seconds())
+        num_sec=(next_action-datetime.datetime.utcnow()).total_seconds()
+        print(f"sleeping until {next_action}; {num_sec}s")
+        # num_sec could be non-positive if, e.g., do_snapshot() returned a time
+        # in the near future and do_replicate took a long time to finish.
+        if num_sec > 0:
+            time.sleep(num_sec)
 
 if __name__ == "__main__":
    main()
