@@ -88,7 +88,7 @@ class replica_t:
 
 
 @dataclasses.dataclass(frozen=True) #, order=True)
-class managed_dataset:
+class managed_dataset_t:
     source: replica_t
     destinations: typing.Tuple[replica_t, ...]
 
@@ -116,7 +116,7 @@ class managed_dataset:
             recursive=obj["recursive"]
         except KeyError:
             recursive=True
-        return managed_dataset(
+        return managed_dataset_t(
             source=source,
             destinations=destinations,
             snapshot_period=snapshot_period,
@@ -134,7 +134,7 @@ class config:
         managed_datasets = []
         lst = obj["managed-datasets"]
         for ele in lst:
-            managed_datasets.append(managed_dataset.from_json(ele))
+            managed_datasets.append(managed_dataset_t.from_json(ele))
         return config(tuple(managed_datasets))
 
 LOG_ERROR=1
