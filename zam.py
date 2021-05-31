@@ -4,6 +4,9 @@ import collections
 import dataclasses
 import datetime
 import json
+import subprocess
+import sys
+import time
 import types
 import typing
 
@@ -137,6 +140,85 @@ class config:
             managed_datasets.append(managed_dataset_t.from_json(ele))
         return config(tuple(managed_datasets))
 
+@dataclasses.dataclass(frozen=True, order=True)
+class snapshot_t:
+    remote_host: typing.Optional[str]
+    pool:str
+    dataset:str
+    datetime: datetime.datetime
+
+    def delete():
+        raise "not implemented"
+
+    def clone_to(replica: replica_t):
+        raise "not implemented"
+
+    @staticmethod
+    def new(mds: managed_dataset_t):
+        replica: replica_t = mds.source
+        if replica.remote_host is not None:
+            raise Exception("not implemented")
+        now=datetime.datetime.utcnow()
+        s_now=now.strftime(replica.date_fstring)
+
+        #zfs snapshot tank/home/i@foo
+        dataset_full_name=f'{replica.pool}/{replica.dataset}'
+        snapshot_full_name=f'{dataset_full_name}@{replica.snapshot_prefix}{s_now}'
+        command=['zfs', 'snapshot', snapshot_full_name]
+        if mds.recursive:
+            command.append('-r')
+        command = subprocess.run(command, capture_output=True)
+        if command.returncode:
+            print("Failed to create snapshot. stderr:")
+            print("\t" + command.stderr.decode("utf-8").replace("\n", "\n\t").rstrip("\n\t"))
+            raise Exception("Failed to create snapshot")
+        output = command.stdout.decode("utf-8")
+        lines = output.split('\n')
+        return snapshot_t(
+            remote_host=replica.remote_host,
+            pool=replica.pool,
+            dataset=replica.dataset,
+            datetime=now)
+
+    @staticmethod
+    def list(replica: replica_t):
+        if replica.remote_host is not None:
+            raise Exception("not implemented")
+
+
+        dataset_full_name=f'{replica.pool}/{replica.dataset}'
+        command = subprocess.run(['zfs', 'list', '-t', 'snapshot',
+                                  dataset_full_name, '-o',
+                                  'name'], capture_output=True)
+        command.check_returncode()
+        output = command.stdout.decode("utf-8")
+        lines = output.split('\n')
+        assert(lines[0] == 'NAME')
+        prefix=f'{dataset_full_name}@'
+
+        ret=[]
+        for line in lines[1:]:
+            if len(line) == 0:
+                continue
+            assert(line.startswith(prefix))
+            line=line.removeprefix(prefix)
+
+            if not line.startswith(replica.snapshot_prefix):
+                continue
+            line=line.removeprefix(replica.snapshot_prefix)
+
+            dt = datetime.datetime.strptime(line, replica.date_fstring)
+            ret.append(snapshot_t(
+                remote_host=replica.remote_host,
+                pool=replica.pool,
+                dataset=replica.dataset,
+                datetime=dt))
+        ret.sort()
+        return ret
+
+
+
+
 LOG_ERROR=1
 LOG_WARNING=2
 LOG_INFO=3
@@ -163,6 +245,21 @@ parser.add_argument('--verbose', '-v', default=LOG_ERROR, action='count', help="
 # Known issues / edge cases:
 # * Must be careful on border between different windows?
 
+def do_snapshot(mds):
+    snapshots=snapshot_t.list(mds.source)
+    now=datetime.datetime.utcnow()
+    if now - snapshots[-1].datetime > mds.snapshot_period:
+        print("Taking snapshot")
+        new=snapshot_t.new(mds)
+        snapshots.append(new)
+    return snapshots[-1].datetime + mds.snapshot_period - now
+
+def do_replicate(mds):
+    return datetime.timedelta.max
+
+def do_prune(mds):
+    return datetime.timedelta.max
+
 def main():
     args = parser.parse_args()
 
@@ -173,6 +270,17 @@ def main():
         conf = config.from_json(json.load(json_file))
     if args.verbose >= LOG_TRACE:
         print(f'config is: {conf}')
+
+    while True:
+        next_action = datetime.timedelta.max
+
+        for ele in conf.managed_datasets:
+            next_action = min(next_action, do_snapshot(ele))
+            next_action = min(next_action, do_replicate(ele))
+            next_action = min(next_action, do_prune(ele))
+
+        print(f"sleeping for {next_action.total_seconds()} seconds")
+        time.sleep(next_action.total_seconds())
 
 if __name__ == "__main__":
    main()
