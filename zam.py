@@ -229,9 +229,25 @@ LOG_WARNING=2
 LOG_INFO=3
 LOG_TRACE=4
 
+def log(level, message):
+    if args.log_level >= level:
+        print(message)
+
+def log_e(message):
+    log(LOG_ERROR, message)
+def log_w(message):
+    log(LOG_WARNING, message)
+def log_i(message):
+    log(LOG_INFO, message)
+def log_t(message):
+    log(LOG_TRACE, message)
+
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', '-c', type=str, dest="config_file_name", help="The location of the script's configuration file", default='zam_config.json')
-parser.add_argument('--verbose', '-v', default=LOG_ERROR, action='count', help="Increases verbosity. Can be used multiple times.")
+parser.add_argument('--verbose', '-v', dest="log_level", action="append_const", const=1, default=[], help="Increases verbosity. Can be used multiple times.")
+parser.add_argument('--quiet', '-q', dest="log_level", action="append_const", const=-1, help="Decreases verbosity. Can be used multiple times.")
+
 
 
 
@@ -253,7 +269,7 @@ parser.add_argument('--verbose', '-v', default=LOG_ERROR, action='count', help="
 def do_snapshot(mds):
     snapshots=snapshot_t.list(mds.source)
     if datetime.datetime.utcnow() - snapshots[-1].datetime > mds.snapshot_period:
-        print("Taking snapshot")
+        log_i("Taking snapshot")
         new=snapshot_t.new(mds)
         snapshots.append(new)
     return snapshots[-1].datetime + mds.snapshot_period
@@ -265,15 +281,15 @@ def do_prune(mds):
     return datetime.datetime.max
 
 def main():
+    global args
     args = parser.parse_args()
+    args.log_level = LOG_INFO + sum(args.log_level)
 
-    if args.verbose >= LOG_TRACE:
-        print(f'Args are: {args}')
+    log_t(f'Args are: {args}')
 
     with open(args.config_file_name) as json_file:
         conf = config.from_json(json.load(json_file))
-    if args.verbose >= LOG_TRACE:
-        print(f'config is: {conf}')
+    log_t(f'config is: {conf}')
 
     while True:
         next_action = datetime.datetime.max
@@ -284,7 +300,7 @@ def main():
             next_action = min(next_action, do_prune(ele))
 
         num_sec=(next_action-datetime.datetime.utcnow()).total_seconds()
-        print(f"sleeping until {next_action}; {num_sec}s")
+        log_t(f"sleeping until {next_action}; {num_sec}s")
         # num_sec could be non-positive if, e.g., do_snapshot() returned a time
         # in the near future and do_replicate took a long time to finish.
         if num_sec > 0:
