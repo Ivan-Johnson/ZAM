@@ -49,11 +49,13 @@ class replica_t:
     pool:str = dataclasses.field()
     dataset:str = dataclasses.field()
     windows: typing.Tuple[window_t] = dataclasses.field()
-    snapshot_prefix: str = dataclasses.field(default="ZAM-")
-
+    snapshot_prefix: str = dataclasses.field()
+    date_fstring: str = dataclasses.field()
     def __post_init__(self):
         if list(self.windows) != sorted(list(self.windows), key=lambda x: x.max_age or datetime.timedelta.max):
-            raise ValueError('Windows must be sorted')
+            raise ValueError('Given windows are not sorted by max_age')
+        if list(self.windows) != sorted(list(self.windows), key=lambda x: x.period):
+            raise ValueError('Given window periods are not monotonically increasing')
 
     @staticmethod
     def from_json(obj):
@@ -66,13 +68,21 @@ class replica_t:
         windows=[]
         for ele in obj["windows"]:
             windows.append(window_t.from_json(ele))
-        snapshot_prefix: str = dataclasses.field(default="ZAM-")
+        try:
+            snapshot_prefix: str = obj["snapshot-prefix"]
+        except KeyError:
+            snapshot_prefix = "ZAM-"
+        try:
+            date_fstring=obj["date-fstring"]
+        except KeyError:
+            date_fstring="%Y-%m-%dT%H:%M:%S"
         return replica_t(
             remote_host=remote_host,
             pool=pool,
             dataset=dataset,
             windows=windows,
             snapshot_prefix=snapshot_prefix,
+            date_fstring=date_fstring,
         )
 
 
