@@ -82,12 +82,16 @@ class managed_dataset:
     source: replica_t
     destinations: typing.Tuple[replica_t, ...]
 
-    snapshot_frequency: datetime.timedelta
-    replication_frequency: datetime.timedelta
-    prune_frequency: datetime.timedelta
+    snapshot_period: datetime.timedelta
+    replication_period: datetime.timedelta
+    prune_period: datetime.timedelta
 
     """If true, not only will the source dataset be cloned but also all descendent datasets"""
     recursive: bool = dataclasses.field()
+
+    def __post_init__(self):
+        if self.snapshot_period > self.replication_period or self.snapshot_period > self.prune_period:
+            raise ValueError('There is no point in replicating/pruning more often than the rate at which they are created')
 
     @staticmethod
     def from_json(obj):
@@ -95,19 +99,19 @@ class managed_dataset:
         destinations=[]
         for ele in obj["destinations"]:
             destinations.append(replica_t.from_json(ele))
-        snapshot_frequency=datetime_from_json(obj["snapshot-frequency"])
-        replication_frequency=datetime_from_json(obj["replication-frequency"])
-        prune_frequency=datetime_from_json(obj["prune-frequency"])
+        snapshot_period=datetime_from_json(obj["snapshot-period"])
+        replication_period=datetime_from_json(obj["replication-period"])
+        prune_period=datetime_from_json(obj["prune-period"])
         try:
             recursive=obj["recursive"]
-        except:
+        except KeyError:
             recursive=True
         return managed_dataset(
             source=source,
             destinations=destinations,
-            snapshot_frequency=snapshot_frequency,
-            replication_frequency=replication_frequency,
-            prune_frequency=prune_frequency,
+            snapshot_period=snapshot_period,
+            replication_period=replication_period,
+            prune_period=prune_period,
             recursive=recursive,
         )
 

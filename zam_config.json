@@ -22,9 +22,9 @@
 		    ]
 		}
 	    ],
-	    "snapshot-frequency": {"minutes": "10"},
-	    "replication-frequency": {"hours": "1"},
-	    "prune-frequency": {"hours": "1"}
+	    "snapshot-period": {"minutes": "10"},
+	    "replication-period": {"hours": "1"},
+	    "prune-period": {"hours": "1"}
 	}
     ]
 }
