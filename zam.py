@@ -147,6 +147,11 @@ class snapshot_t:
     dataset:str
     datetime: datetime.datetime
 
+    def __post_init__(self):
+        now=datetime.datetime.utcnow()
+        if self.datetime > now:
+            raise ValueError('A snapshot with a future date exists')
+
     def delete():
         raise "not implemented"
 
