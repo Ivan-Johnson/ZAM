@@ -10,6 +10,8 @@ import time
 import types
 import typing
 
+# TODO: add support for regular `zpool scrub`s
+
 SECONDS_PER_SOLAR_YEAR=31556925
 
 def datetime_from_json(obj):
@@ -26,6 +28,24 @@ def datetime_from_json(obj):
         minutes=int(d["minutes"]),
         seconds=int(d["seconds"])+offset,
     )
+
+def pretty_check_returncode(returncode:typing.Optional[int], stderr:bytes, errmsg:str):
+    if returncode is not None and returncode != 0:
+        print(f'{errmsg}. stderr:')
+        string = stderr.decode('utf-8')
+        print('\t' + string.replace('\n', '\n\t').rstrip('\n\t'))
+        raise Exception(errmsg)
+
+@dataclasses.dataclass(frozen=True, order=True)
+class snapshot_t:
+    datetime:datetime.datetime
+
+    def __post_init__(self):
+        now=datetime.datetime.utcnow()
+        if self.datetime > now:
+            raise ValueError('A snapshot with a future date exists')
+    def __str__(self):
+        return f'snapshot_t({self.datetime})'
 
 @dataclasses.dataclass(frozen=True, order=True)
 class window_t:
@@ -46,9 +66,11 @@ class window_t:
             period=period,
         )
 
-@dataclasses.dataclass(frozen=True) #, order=True)
+@dataclasses.dataclass(frozen=True)
 class replica_t:
     remote_host: typing.Optional[str] = dataclasses.field()
+    ssh_port:typing.Optional[int] = dataclasses.field()
+    ssh_identity_file:typing.Optional[str] = dataclasses.field()
     pool:str = dataclasses.field()
     dataset:str = dataclasses.field()
     windows: typing.Tuple[window_t] = dataclasses.field()
@@ -56,9 +78,104 @@ class replica_t:
     date_fstring: str = dataclasses.field()
     def __post_init__(self):
         if list(self.windows) != sorted(list(self.windows), key=lambda x: x.max_age or datetime.timedelta.max):
-            raise ValueError('Given windows are not sorted by max_age')
+            raise ValueError(f'{self}\'s windows are not sorted by max_age')
         if list(self.windows) != sorted(list(self.windows), key=lambda x: x.period):
-            raise ValueError('Given window periods are not monotonically increasing')
+            raise ValueError(f'{self}\'s window periods are not monotonically increasing')
+    def __str__(self):
+        return f'replica_t({self.remote_host}, {self.pool}, {self.dataset})'
+
+    def get_snapshot_full_name(self, snapshot:snapshot_t):
+        return f'{self.pool}/{self.dataset}@{self.snapshot_prefix}{snapshot.datetime.strftime(self.date_fstring)}'
+
+    def __get_ssh_cmd(self):
+        if self.remote_host is None:
+            return []
+
+        ssh=["ssh"]
+        if self.ssh_port is not None:
+            ssh += ["-p", str(self.ssh_port)]
+        if self.ssh_identity_file is not None:
+            ssh += ['-i', self.ssh_identity_file]
+        ssh += [self.remote_host]
+        return ssh
+
+    def run(self, args, **kwargs):
+        args = self.__get_ssh_cmd() + args
+        log_t(f'Doing `run`: {args} with {kwargs}')
+        return subprocess.run(args, **kwargs)
+
+    def popen(self, args, **kwargs):
+        args = self.__get_ssh_cmd() + args
+        log_t(f'Doing `popen`: {args} with {kwargs}')
+        return subprocess.Popen(args, **kwargs)
+
+    def exists(self):
+        dataset_full_name=f'{self.pool}/{self.dataset}'
+        cmd = self.run(['zfs', 'list', '-o', 'name'], capture_output=True)
+        pretty_check_returncode(cmd.returncode, cmd.stderr, '`zfs list` failed when checking if {self} exists')
+        output = cmd.stdout.decode("utf-8")
+        lines = output.split('\n')
+        assert(lines[0] == 'NAME')
+        lines = lines[1:]
+        return dataset_full_name in lines
+
+    def list(self):
+        # step 1: call `zfs list -t snapshot {self}`
+        dataset_full_name=f'{self.pool}/{self.dataset}'
+        completed = self.run(['zfs', 'list', '-t', 'snapshot', dataset_full_name, '-o', 'name'], capture_output=True)
+        pretty_check_returncode(completed.returncode, completed.stderr, f'Failed to list snapshots of {self}')
+        if (completed.stderr == b'no datasets available\n'):
+            return []
+        output = completed.stdout.decode("utf-8")
+
+        # step 2: parse output
+        lines = output.split('\n')
+        assert(lines[0] == 'NAME')
+        lines = lines[1:]
+        prefix=f'{dataset_full_name}@'
+        ret=[]
+        for fullname in lines:
+            if len(fullname) == 0:
+                continue
+            assert(fullname.startswith(prefix))
+            name=fullname.removeprefix(prefix)
+
+            if not name.startswith(self.snapshot_prefix):
+                # Ignore non-ZAM snapshots
+                continue
+
+            time_s=name.removeprefix(self.snapshot_prefix)
+            dt = datetime.datetime.strptime(time_s, self.date_fstring)
+            snapshot=snapshot_t(datetime=dt)
+            ret.append(snapshot)
+            assert(self.get_snapshot_full_name(snapshot) == fullname)
+        ret.sort()
+        return ret
+
+    # TODO: add type hint dest:replica_t
+    def clone_to(self, dest, snapshot_old:snapshot_t, snapshot_new:snapshot_t):
+        args_incremental=[]
+        if snapshot_old is not None:
+            args_incremental=['-i', self.get_snapshot_full_name(snapshot_old)]
+
+        #TODO: send with --replicate, receive with ?
+        cmd_source = ['zfs', 'send'] + args_incremental + ['--raw', '--verbose', f'{self.get_snapshot_full_name(snapshot_new)}']
+        with self.popen(cmd_source, stdout=subprocess.PIPE) as popen_source:
+            cmd_dest = ['zfs', 'recv', f'{dest.get_snapshot_full_name(snapshot_new)}']
+            with dest.popen(cmd_dest, stdin=popen_source.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as popen_dest:
+                while True: #do while
+                    time.sleep(1) # TODO: unnecessarily slow for incremental?
+
+                    #TODO inline ternerary is ugly -_-
+                    status_source = popen_source.poll()
+                    pretty_check_returncode(status_source, None if popen_source.stderr is None else popen_source.stderr.read(), f'zfs send failed {cmd_source}')
+                    status_dest = popen_dest.poll()
+                    pretty_check_returncode(status_dest, None if popen_dest.stderr is None else popen_dest.stderr.read(), f'zfs recv failed {cmd_dest}')
+                    if status_source == 0 and status_dest == 0:
+                        break
+
+    def delete(self, dest):
+        raise Exception("not implemented")
 
     @staticmethod
     def from_json(obj):
@@ -66,6 +183,14 @@ class replica_t:
             remote_host:str = obj["remote-host"]
         except KeyError:
             remote_host = None
+        try:
+            ssh_port:int = int(obj["ssh_port"])
+        except KeyError:
+            ssh_port:int = None
+        try:
+            ssh_identity_file:str = obj["identity-file"]
+        except KeyError:
+            ssh_identity_file=None
         pool:str = obj["pool"]
         dataset:str=obj["dataset"]
         windows=[]
@@ -81,6 +206,8 @@ class replica_t:
             date_fstring="%Y-%m-%dT%H:%M:%S"
         return replica_t(
             remote_host=remote_host,
+            ssh_port=ssh_port,
+            ssh_identity_file=ssh_identity_file,
             pool=pool,
             dataset=dataset,
             windows=windows,
@@ -106,6 +233,18 @@ class managed_dataset_t:
         if self.snapshot_period > self.replication_period or self.snapshot_period > self.prune_period:
             raise ValueError('There is no point in replicating/pruning more often than the rate at which they are created')
 
+    def take_snapshot(self):
+        now=datetime.datetime.utcnow()
+        snapshot:snapshot_t = snapshot_t(datetime=now)
+        snapshot_fullname:str=self.source.get_snapshot_full_name(snapshot)
+
+        command=['zfs', 'snapshot', snapshot_fullname]
+        if self.recursive:
+            command.append('-r')
+        completed = self.source.run(command, capture_output=True)
+        pretty_check_returncode(completed.returncode, completed.stderr, f'Failed to take snapshot on {self.source}')
+        return snapshot
+
     @staticmethod
     def from_json(obj):
         source = replica_t.from_json(obj["source"])
@@ -128,6 +267,15 @@ class managed_dataset_t:
             recursive=recursive,
         )
 
+# TODO: make a config framework?
+#
+# A: it's a pain to have to maintain from_json functions
+#
+# B: I'd like configs to be able to define default values. e.g. a "dataset"
+# defined in the top level JSON object would be used as the default dataset for
+# all replicas in all managed_datasets. With a custom library, this could be
+# implemented in __getattr__/__getattribute__ where if the value is not defined
+# locally it recurses up the config struct to find a default value.
 @dataclasses.dataclass(frozen=True)
 class config:
     managed_datasets: typing.Tuple[replica_t]
@@ -139,90 +287,6 @@ class config:
         for ele in lst:
             managed_datasets.append(managed_dataset_t.from_json(ele))
         return config(tuple(managed_datasets))
-
-@dataclasses.dataclass(frozen=True, order=True)
-class snapshot_t:
-    remote_host: typing.Optional[str]
-    pool:str
-    dataset:str
-    datetime: datetime.datetime
-
-    def __post_init__(self):
-        now=datetime.datetime.utcnow()
-        if self.datetime > now:
-            raise ValueError('A snapshot with a future date exists')
-
-    def delete():
-        raise "not implemented"
-
-    def clone_to(replica: replica_t):
-        raise "not implemented"
-
-    @staticmethod
-    def new(mds: managed_dataset_t):
-        replica: replica_t = mds.source
-        if replica.remote_host is not None:
-            raise Exception("not implemented")
-        now=datetime.datetime.utcnow()
-        s_now=now.strftime(replica.date_fstring)
-
-        #zfs snapshot tank/home/i@foo
-        dataset_full_name=f'{replica.pool}/{replica.dataset}'
-        snapshot_full_name=f'{dataset_full_name}@{replica.snapshot_prefix}{s_now}'
-        command=['zfs', 'snapshot', snapshot_full_name]
-        if mds.recursive:
-            command.append('-r')
-        command = subprocess.run(command, capture_output=True)
-        if command.returncode:
-            print("Failed to create snapshot. stderr:")
-            print("\t" + command.stderr.decode("utf-8").replace("\n", "\n\t").rstrip("\n\t"))
-            raise Exception("Failed to create snapshot")
-        output = command.stdout.decode("utf-8")
-        lines = output.split('\n')
-        return snapshot_t(
-            remote_host=replica.remote_host,
-            pool=replica.pool,
-            dataset=replica.dataset,
-            datetime=now)
-
-    @staticmethod
-    def list(replica: replica_t):
-        if replica.remote_host is not None:
-            raise Exception("not implemented")
-
-
-        dataset_full_name=f'{replica.pool}/{replica.dataset}'
-        command = subprocess.run(['zfs', 'list', '-t', 'snapshot',
-                                  dataset_full_name, '-o',
-                                  'name'], capture_output=True)
-        command.check_returncode()
-        output = command.stdout.decode("utf-8")
-        lines = output.split('\n')
-        assert(lines[0] == 'NAME')
-        prefix=f'{dataset_full_name}@'
-
-        ret=[]
-        for line in lines[1:]:
-            if len(line) == 0:
-                continue
-            assert(line.startswith(prefix))
-            line=line.removeprefix(prefix)
-
-            if not line.startswith(replica.snapshot_prefix):
-                continue
-            line=line.removeprefix(replica.snapshot_prefix)
-
-            dt = datetime.datetime.strptime(line, replica.date_fstring)
-            ret.append(snapshot_t(
-                remote_host=replica.remote_host,
-                pool=replica.pool,
-                dataset=replica.dataset,
-                datetime=dt))
-        ret.sort()
-        return ret
-
-
-
 
 LOG_ERROR=1
 LOG_WARNING=2
@@ -267,15 +331,34 @@ parser.add_argument('--quiet', '-q', dest="log_level", action="append_const", co
 # * Must be careful on border between different windows?
 
 def do_snapshot(mds):
-    snapshots=snapshot_t.list(mds.source)
-    if datetime.datetime.utcnow() - snapshots[-1].datetime > mds.snapshot_period:
-        log_i("Taking snapshot")
-        new=snapshot_t.new(mds)
-        snapshots.append(new)
+    snapshots=mds.source.list()
+    if len(snapshots) == 0 or datetime.datetime.utcnow() - snapshots[-1].datetime > mds.snapshot_period:
+        log_i(f'Taking snapshot on {mds.source}')
+        snapshots.append(mds.take_snapshot())
     return snapshots[-1].datetime + mds.snapshot_period
 
 def do_replicate(mds):
-    return datetime.datetime.max
+    src=mds.source
+    snapshots_s=src.list()
+    assert(len(snapshots_s) > 0)
+
+    # TODO: must manually recurse on child datasets? Just $(zfs list | grep '^prefix')ish?
+    # After adding recursive replication, add ability to filter out from recursive
+    for dest in mds.destinations:
+        if not dest.exists():
+            snapshot=snapshots_s[0]
+            log_i(f'Initializing {dest} with {snapshot} from {src}')
+            mds.source.clone_to(dest, None, snapshot)
+        snapshots_d=dest.list()
+
+        for previous, current in zip(snapshots_s, snapshots_s[1:]):
+            assert(previous in snapshots_d)
+            if not current in snapshots_d:
+                log_i(f'Cloning {current} from {src} to {dest}')
+                mds.source.clone_to(dest, previous, current)
+                snapshots_d.append(current)
+
+    return datetime.datetime.utcnow() + mds.replication_period
 
 def do_prune(mds):
     return datetime.datetime.max
@@ -295,6 +378,9 @@ def main():
         next_action = datetime.datetime.max
 
         for ele in conf.managed_datasets:
+            # TODO: rn all three actions happen every loop. They should only
+            # happen on their own periods. Use coroutines?
+            # https://docs.python.org/3/library/asyncio-task.html
             next_action = min(next_action, do_snapshot(ele))
             next_action = min(next_action, do_replicate(ele))
             next_action = min(next_action, do_prune(ele))
