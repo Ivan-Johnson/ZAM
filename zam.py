@@ -10,8 +10,6 @@ import time
 import types
 import typing
 
-# TODO: add support for regular `zpool scrub`s
-
 SECONDS_PER_SOLAR_YEAR=31556925
 
 def datetime_from_json(obj):
@@ -158,7 +156,7 @@ class replica_t:
         if snapshot_old is not None:
             args_incremental=['-i', self.get_snapshot_full_name(snapshot_old)]
 
-        #TODO: send with --replicate, receive with ?
+        #TODO: send with --replicate or maybe --backup? similarly update receive
         cmd_source = ['zfs', 'send'] + args_incremental + ['--raw', '--verbose', f'{self.get_snapshot_full_name(snapshot_new)}']
         with self.popen(cmd_source, stdout=subprocess.PIPE) as popen_source:
             cmd_dest = ['zfs', 'recv', f'{dest.get_snapshot_full_name(snapshot_new)}']
