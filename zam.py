@@ -4,6 +4,7 @@ import collections
 import dataclasses
 import datetime
 import json
+import os
 import subprocess
 import sys
 import time
@@ -304,13 +305,27 @@ def log_i(message):
 def log_t(message):
     log(LOG_TRACE, message)
 
+default_config_fname="zam_config.json"
+
+#from highest to lowest precedence
+default_configs=[
+    f'/etc/{default_config_fname}',
+
+    # /usr/local is for sysadmin installed files; other /usr directorys are from the package manager
+
+    # host-specific configuration
+    f'/usr/local/etc/{default_config_fname}',
+    f'/usr/etc/{default_config_fname}',
+
+    # architecture-independent configuration
+    f'/usr/local/share/{default_config_fname}',
+    f'/usr/share/{default_config_fname}',
+]
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--config', '-c', type=str, dest="config_file_name", help="The location of the script's configuration file", default='zam_config.json')
+parser.add_argument('--config', '-c', dest="config_file_name", action="store", default=default_configs, help="The location of the script's configuration file")
 parser.add_argument('--verbose', '-v', dest="log_level", action="append_const", const=1, default=[], help="Increases verbosity. Can be used multiple times.")
 parser.add_argument('--quiet', '-q', dest="log_level", action="append_const", const=-1, help="Decreases verbosity. Can be used multiple times.")
-
-
 
 
 
@@ -367,6 +382,15 @@ def main():
     args.log_level = LOG_INFO + sum(args.log_level)
 
     log_t(f'Args are: {args}')
+
+    if isinstance(args.config_file_name, list):
+        for fname in args.config_file_name:
+            if os.path.isfile(fname):
+                args.config_file_name = fname
+                break
+        else:
+            print(f'None of the default config files exist ({default_configs})', file=sys.stderr)
+            exit(1)
 
     with open(args.config_file_name) as json_file:
         conf = config.from_json(json.load(json_file))

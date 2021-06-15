@@ -14,6 +14,11 @@ sysconfdir ?= $(prefix)/etc
 sharedstatedir ?= $(prefix)/com
 localstatedir ?= $(prefix)/var
 runstatedir ?= $(localstatedir)/run
+libdir ?= $(exec_prefix)/lib
+
+#TODO: I made up these variable names/definitions; is there a standard I should follow?
+systemduserdir ?= $(libdir)/sysusers.d
+systemdservicedir ?= $(libdir)/systemd/system
 
 mandir ?= $(datarootdir)/man
 man1dir ?= $(mandir)/man1
@@ -49,3 +54,6 @@ install:
 	@echo Installing ZAM
 	$(INSTALL) zam.py $(DESTDIR)$(bindir)/zam
 	$(INSTALLDATA) $(utildir)/"example config.json" $(DESTDIR)$(datadir_zam)/"example config.json"
+
+	$(INSTALLDATA) $(utildir)/user.conf $(DESTDIR)$(systemduserdir)/zam.conf
+	$(INSTALLDATA) $(utildir)/systemd.service $(DESTDIR)$(systemdservicedir)/zam.service

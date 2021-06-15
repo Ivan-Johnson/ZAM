@@ -1,0 +1,12 @@
+[Unit]
+Description=ZFS Automatic Manager
+
+[Service]
+Type=exec
+ExecStart=/usr/bin/zam
+User=zam
+Group=zam
+Nice=5
+
+[Install]
+WantedBy=multi-user.target
