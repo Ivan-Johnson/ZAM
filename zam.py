@@ -355,8 +355,6 @@ def do_replicate(mds):
     snapshots_s=src.list()
     assert(len(snapshots_s) > 0)
 
-    # TODO: must manually recurse on child datasets? Just $(zfs list | grep '^prefix')ish?
-    # After adding recursive replication, add ability to filter out from recursive
     for dest in mds.destinations:
         if not dest.exists():
             snapshot=snapshots_s[0]
@@ -400,9 +398,7 @@ def main():
         next_action = datetime.datetime.max
 
         for ele in conf.managed_datasets:
-            # TODO: rn all three actions happen every loop. They should only
-            # happen on their own periods. Use coroutines?
-            # https://docs.python.org/3/library/asyncio-task.html
+            # These functions should be on separate timers. See https://github.com/Ivan-Johnson/zam/issues/9
             next_action = min(next_action, do_snapshot(ele))
             next_action = min(next_action, do_replicate(ele))
             next_action = min(next_action, do_prune(ele))
