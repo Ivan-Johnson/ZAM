@@ -1,5 +1,6 @@
 #!/bin/python
 import argparse
+import asyncio
 import collections
 import dataclasses
 import datetime
@@ -374,7 +375,14 @@ def do_replicate(mds):
 def do_prune(mds):
     return datetime.datetime.max
 
-def main():
+async def async_loop(func, datasets):
+    while True:
+        next_action = min(map(func, datasets))
+        num_sec=(next_action-datetime.datetime.utcnow()).total_seconds()
+        await asyncio.sleep(max(1, num_sec))
+
+async def main():
+    # args must be global so that, e.g., the log function can access the log level
     global args
     args = parser.parse_args()
     args.log_level = LOG_INFO + sum(args.log_level)
@@ -394,21 +402,25 @@ def main():
         conf = config.from_json(json.load(json_file))
     log_t(f'config is: {conf}')
 
+    # note that we don't have to worry about the do_* functions running
+    # concurrently because they are not asyncronous; only async_loop and main
+    # are async.
+    tasks = [
+        asyncio.create_task(async_loop(do_snapshot, conf.managed_datasets), name="snapshot"),
+        asyncio.create_task(async_loop(do_replicate, conf.managed_datasets), name="replicate"),
+        asyncio.create_task(async_loop(do_prune, conf.managed_datasets), name="prune"),
+    ]
+
     while True:
-        next_action = datetime.datetime.max
-
-        for ele in conf.managed_datasets:
-            # These functions should be on separate timers. See https://github.com/Ivan-Johnson/zam/issues/9
-            next_action = min(next_action, do_snapshot(ele))
-            next_action = min(next_action, do_replicate(ele))
-            next_action = min(next_action, do_prune(ele))
-
-        num_sec=(next_action-datetime.datetime.utcnow()).total_seconds()
-        log_t(f"sleeping until {next_action}; {num_sec}s")
-        # num_sec could be non-positive if, e.g., do_snapshot() returned a time
-        # in the near future and do_replicate took a long time to finish.
-        if num_sec > 0:
-            time.sleep(num_sec)
+        for task in tasks:
+            if task.done():
+                exception = task.exception()
+                if exception is not None:
+                    print(f'A task raised an exception ({task}, {exception})')
+                    raise exception
+                else:
+                    raise Exception(f'A task exited unexpectedly ({task})')
+        await asyncio.sleep(1)
 
 if __name__ == "__main__":
-   main()
+    asyncio.run(main())
