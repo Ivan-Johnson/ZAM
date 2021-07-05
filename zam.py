@@ -53,10 +53,10 @@ class window_t:
     @staticmethod
     def from_dict(obj):
         try:
-            max_age=timedelta_from_dict(obj["max-age"])
+            max_age=timedelta_from_dict(obj['max-age'])
         except KeyError:
             max_age=None
-        period=timedelta_from_dict(obj["period"])
+        period=timedelta_from_dict(obj['period'])
         return window_t(
             max_age=max_age,
             period=period,
@@ -87,9 +87,9 @@ class replica_t:
         if self.remote_host is None:
             return []
 
-        ssh=["ssh"]
+        ssh=['ssh']
         if self.ssh_port is not None:
-            ssh += ["-p", str(self.ssh_port)]
+            ssh += ['-p', str(self.ssh_port)]
         if self.ssh_identity_file is not None:
             ssh += ['-i', self.ssh_identity_file]
         ssh += [self.remote_host]
@@ -109,7 +109,7 @@ class replica_t:
         dataset_full_name=f'{self.pool}/{self.dataset}'
         cmd = self.run(['zfs', 'list', '-o', 'name'], capture_output=True)
         pretty_check_returncode(cmd.returncode, cmd.stderr, '`zfs list` failed when checking if {self} exists')
-        output = cmd.stdout.decode("utf-8")
+        output = cmd.stdout.decode('utf-8')
         lines = output.split('\n')
         assert(lines[0] == 'NAME')
         lines = lines[1:]
@@ -122,7 +122,7 @@ class replica_t:
         pretty_check_returncode(completed.returncode, completed.stderr, f'Failed to list snapshots of {self}')
         if (completed.stderr == b'no datasets available\n'):
             return []
-        output = completed.stdout.decode("utf-8")
+        output = completed.stdout.decode('utf-8')
 
         # step 2: parse output
         lines = output.split('\n')
@@ -171,35 +171,35 @@ class replica_t:
                         break
 
     def delete(self, dest):
-        raise Exception("not implemented")
+        raise Exception('not implemented')
 
     @staticmethod
     def from_dict(obj):
         try:
-            remote_host:str = obj["remote-host"]
+            remote_host:str = obj['remote-host']
         except KeyError:
             remote_host = None
         try:
-            ssh_port:int = int(obj["ssh_port"])
+            ssh_port:int = int(obj['ssh_port'])
         except KeyError:
             ssh_port:int = None
         try:
-            ssh_identity_file:str = obj["identity-file"]
+            ssh_identity_file:str = obj['identity-file']
         except KeyError:
             ssh_identity_file=None
-        pool:str = obj["pool"]
-        dataset:str=obj["dataset"]
+        pool:str = obj['pool']
+        dataset:str=obj['dataset']
         windows=[]
-        for ele in obj["windows"]:
+        for ele in obj['windows']:
             windows.append(window_t.from_dict(ele))
         try:
-            snapshot_prefix: str = obj["snapshot-prefix"]
+            snapshot_prefix: str = obj['snapshot-prefix']
         except KeyError:
-            snapshot_prefix = "ZAM-"
+            snapshot_prefix = 'ZAM-'
         try:
-            date_fstring=obj["date-fstring"]
+            date_fstring=obj['date-fstring']
         except KeyError:
-            date_fstring="%Y-%m-%dT%H:%M:%S"
+            date_fstring='%Y-%m-%dT%H:%M:%S'
         return replica_t(
             remote_host=remote_host,
             ssh_port=ssh_port,
@@ -222,7 +222,7 @@ class managed_dataset_t:
     replication_period: datetime.timedelta
     prune_period: datetime.timedelta
 
-    """If true, not only will the source dataset be cloned but also all descendent datasets"""
+    '''If true, not only will the source dataset be cloned but also all descendent datasets'''
     recursive: bool = dataclasses.field()
 
     def __post_init__(self):
@@ -243,15 +243,15 @@ class managed_dataset_t:
 
     @staticmethod
     def from_dict(obj):
-        source = replica_t.from_dict(obj["source"])
+        source = replica_t.from_dict(obj['source'])
         destinations=[]
-        for ele in obj["destinations"]:
+        for ele in obj['destinations']:
             destinations.append(replica_t.from_dict(ele))
-        snapshot_period=timedelta_from_dict(obj["snapshot-period"])
-        replication_period=timedelta_from_dict(obj["replication-period"])
-        prune_period=timedelta_from_dict(obj["prune-period"])
+        snapshot_period=timedelta_from_dict(obj['snapshot-period'])
+        replication_period=timedelta_from_dict(obj['replication-period'])
+        prune_period=timedelta_from_dict(obj['prune-period'])
         try:
-            recursive=obj["recursive"]
+            recursive=obj['recursive']
         except KeyError:
             recursive=True
         return managed_dataset_t(
@@ -267,7 +267,7 @@ class managed_dataset_t:
 #
 # A: it's a pain to have to maintain from_dict functions
 #
-# B: I'd like configs to be able to define default values. e.g. a "dataset"
+# B: I'd like configs to be able to define default values. e.g. a 'dataset'
 # defined in the top level JSON object would be used as the default dataset for
 # all replicas in all managed_datasets. With a custom library, this could be
 # implemented in __getattr__/__getattribute__ where if the value is not defined
@@ -279,7 +279,7 @@ class config_t:
     @staticmethod
     def from_dict(obj):
         managed_datasets = []
-        lst = obj["managed-datasets"]
+        lst = obj['managed-datasets']
         for ele in lst:
             managed_datasets.append(managed_dataset_t.from_dict(ele))
         return config_t(tuple(managed_datasets))
@@ -302,7 +302,7 @@ def log_i(message):
 def log_t(message):
     log(LOG_TRACE, message)
 
-default_config_fname="zam_config.json"
+default_config_fname='zam_config.json'
 
 #from highest to lowest precedence
 default_configs=[
@@ -320,9 +320,9 @@ default_configs=[
 ]
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--config', '-c', dest="config_file_name", action="store", default=default_configs, help="The location of the script's configuration file")
-parser.add_argument('--verbose', '-v', dest="log_level", action="append_const", const=1, default=[], help="Increases verbosity. Can be used multiple times.")
-parser.add_argument('--quiet', '-q', dest="log_level", action="append_const", const=-1, help="Decreases verbosity. Can be used multiple times.")
+parser.add_argument('--config', '-c', dest='config_file_name', action='store', default=default_configs, help='The location of the script\'s configuration file')
+parser.add_argument('--verbose', '-v', dest='log_level', action='append_const', const=1, default=[], help='Increases verbosity. Can be used multiple times.')
+parser.add_argument('--quiet', '-q', dest='log_level', action='append_const', const=-1, help='Decreases verbosity. Can be used multiple times.')
 
 
 
@@ -402,9 +402,9 @@ async def main():
     # concurrently because they are not asyncronous; only async_loop and main
     # are async.
     tasks = [
-        asyncio.create_task(async_loop(do_snapshot, conf.managed_datasets), name="snapshot"),
-        asyncio.create_task(async_loop(do_replicate, conf.managed_datasets), name="replicate"),
-        asyncio.create_task(async_loop(do_prune, conf.managed_datasets), name="prune"),
+        asyncio.create_task(async_loop(do_snapshot, conf.managed_datasets), name='snapshot'),
+        asyncio.create_task(async_loop(do_replicate, conf.managed_datasets), name='replicate'),
+        asyncio.create_task(async_loop(do_prune, conf.managed_datasets), name='prune'),
     ]
 
     while True:
@@ -418,5 +418,5 @@ async def main():
                     raise Exception(f'A task exited unexpectedly ({task})')
         await asyncio.sleep(1)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     asyncio.run(main())
