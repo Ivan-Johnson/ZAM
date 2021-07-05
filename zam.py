@@ -14,7 +14,7 @@ import typing
 
 SECONDS_PER_SOLAR_YEAR=31556925
 
-def datetime_from_json(obj):
+def timedelta_from_json(obj):
     d = collections.defaultdict(int, obj)
 
     offset=0
@@ -57,10 +57,10 @@ class window_t:
     @staticmethod
     def from_json(obj):
         try:
-            max_age=datetime_from_json(obj["max-age"])
+            max_age=timedelta_from_json(obj["max-age"])
         except KeyError:
             max_age=None
-        period=datetime_from_json(obj["period"])
+        period=timedelta_from_json(obj["period"])
         return window_t(
             max_age=max_age,
             period=period,
@@ -251,9 +251,9 @@ class managed_dataset_t:
         destinations=[]
         for ele in obj["destinations"]:
             destinations.append(replica_t.from_json(ele))
-        snapshot_period=datetime_from_json(obj["snapshot-period"])
-        replication_period=datetime_from_json(obj["replication-period"])
-        prune_period=datetime_from_json(obj["prune-period"])
+        snapshot_period=timedelta_from_json(obj["snapshot-period"])
+        replication_period=timedelta_from_json(obj["replication-period"])
+        prune_period=timedelta_from_json(obj["prune-period"])
         try:
             recursive=obj["recursive"]
         except KeyError:
@@ -277,7 +277,7 @@ class managed_dataset_t:
 # implemented in __getattr__/__getattribute__ where if the value is not defined
 # locally it recurses up the config struct to find a default value.
 @dataclasses.dataclass(frozen=True)
-class config:
+class config_t:
     managed_datasets: typing.Tuple[replica_t]
 
     @staticmethod
@@ -286,7 +286,7 @@ class config:
         lst = obj["managed-datasets"]
         for ele in lst:
             managed_datasets.append(managed_dataset_t.from_json(ele))
-        return config(tuple(managed_datasets))
+        return config_t(tuple(managed_datasets))
 
 LOG_ERROR=1
 LOG_WARNING=2
@@ -399,7 +399,7 @@ async def main():
             exit(1)
 
     with open(args.config_file_name) as json_file:
-        conf = config.from_json(json.load(json_file))
+        conf = config_t.from_json(json.load(json_file))
     log_t(f'config is: {conf}')
 
     # note that we don't have to worry about the do_* functions running
