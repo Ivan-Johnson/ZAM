@@ -14,7 +14,7 @@ import typing
 
 SECONDS_PER_SOLAR_YEAR=31556925
 
-def timedelta_from_json(obj):
+def timedelta_from_dict(obj):
     d = collections.defaultdict(int, obj)
 
     offset=0
@@ -55,12 +55,12 @@ class window_t:
     period: datetime.timedelta = dataclasses.field(compare=False)
 
     @staticmethod
-    def from_json(obj):
+    def from_dict(obj):
         try:
-            max_age=timedelta_from_json(obj["max-age"])
+            max_age=timedelta_from_dict(obj["max-age"])
         except KeyError:
             max_age=None
-        period=timedelta_from_json(obj["period"])
+        period=timedelta_from_dict(obj["period"])
         return window_t(
             max_age=max_age,
             period=period,
@@ -178,7 +178,7 @@ class replica_t:
         raise Exception("not implemented")
 
     @staticmethod
-    def from_json(obj):
+    def from_dict(obj):
         try:
             remote_host:str = obj["remote-host"]
         except KeyError:
@@ -195,7 +195,7 @@ class replica_t:
         dataset:str=obj["dataset"]
         windows=[]
         for ele in obj["windows"]:
-            windows.append(window_t.from_json(ele))
+            windows.append(window_t.from_dict(ele))
         try:
             snapshot_prefix: str = obj["snapshot-prefix"]
         except KeyError:
@@ -246,14 +246,14 @@ class managed_dataset_t:
         return snapshot
 
     @staticmethod
-    def from_json(obj):
-        source = replica_t.from_json(obj["source"])
+    def from_dict(obj):
+        source = replica_t.from_dict(obj["source"])
         destinations=[]
         for ele in obj["destinations"]:
-            destinations.append(replica_t.from_json(ele))
-        snapshot_period=timedelta_from_json(obj["snapshot-period"])
-        replication_period=timedelta_from_json(obj["replication-period"])
-        prune_period=timedelta_from_json(obj["prune-period"])
+            destinations.append(replica_t.from_dict(ele))
+        snapshot_period=timedelta_from_dict(obj["snapshot-period"])
+        replication_period=timedelta_from_dict(obj["replication-period"])
+        prune_period=timedelta_from_dict(obj["prune-period"])
         try:
             recursive=obj["recursive"]
         except KeyError:
@@ -269,7 +269,7 @@ class managed_dataset_t:
 
 # TODO: make a config framework?
 #
-# A: it's a pain to have to maintain from_json functions
+# A: it's a pain to have to maintain from_dict functions
 #
 # B: I'd like configs to be able to define default values. e.g. a "dataset"
 # defined in the top level JSON object would be used as the default dataset for
@@ -281,11 +281,11 @@ class config_t:
     managed_datasets: typing.Tuple[replica_t]
 
     @staticmethod
-    def from_json(obj):
+    def from_dict(obj):
         managed_datasets = []
         lst = obj["managed-datasets"]
         for ele in lst:
-            managed_datasets.append(managed_dataset_t.from_json(ele))
+            managed_datasets.append(managed_dataset_t.from_dict(ele))
         return config_t(tuple(managed_datasets))
 
 LOG_ERROR=1
@@ -399,7 +399,7 @@ async def main():
             exit(1)
 
     with open(args.config_file_name) as json_file:
-        conf = config_t.from_json(json.load(json_file))
+        conf = config_t.from_dict(json.load(json_file))
     log_t(f'config is: {conf}')
 
     # note that we don't have to worry about the do_* functions running
