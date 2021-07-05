@@ -14,20 +14,16 @@ import typing
 
 SECONDS_PER_SOLAR_YEAR=31556925
 
-def timedelta_from_dict(obj):
-    d = collections.defaultdict(int, obj)
+def timedelta_from_dict(d):
+    years = d.pop('years', None)
+    months = d.pop('months', None)
 
-    offset=0
-    #timedelta doesn't support years or months because of ambiguity.
-    offset+=d["years"]*SECONDS_PER_SOLAR_YEAR # arbitrary choice of seconds per year
-    offset+=d["months"]*SECONDS_PER_SOLAR_YEAR/12 # I will arbitrarily say "month" means the average length of a month
-    return datetime.timedelta(
-        weeks=int(d["weeks"]),
-        days=int(d["days"]),
-        hours=int(d["hours"]),
-        minutes=int(d["minutes"]),
-        seconds=int(d["seconds"])+offset,
-    )
+    d.setdefault('seconds', 0)
+    if years is not None:
+        d['seconds'] += years*SECONDS_PER_SOLAR_YEAR
+    if months is not None:
+        d['seconds'] += int(months*SECONDS_PER_SOLAR_YEAR/12)
+    return datetime.timedelta(**d)
 
 def pretty_check_returncode(returncode:typing.Optional[int], stderr:bytes, errmsg:str):
     if returncode is not None and returncode != 0:
