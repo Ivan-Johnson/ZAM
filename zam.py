@@ -50,18 +50,6 @@ class window_t:
     max_age: typing.Optional[datetime.timedelta] = dataclasses.field()
     period: datetime.timedelta = dataclasses.field(compare=False)
 
-    @staticmethod
-    def from_dict(obj):
-        try:
-            max_age=timedelta_from_dict(obj['max-age'])
-        except KeyError:
-            max_age=None
-        period=timedelta_from_dict(obj['period'])
-        return window_t(
-            max_age=max_age,
-            period=period,
-        )
-
 @dataclasses.dataclass(frozen=True)
 class replica_t:
     remote_host: typing.Optional[str] = dataclasses.field()
@@ -69,14 +57,15 @@ class replica_t:
     ssh_identity_file:typing.Optional[str] = dataclasses.field()
     pool:str = dataclasses.field()
     dataset:str = dataclasses.field()
-    windows: typing.Tuple[window_t] = dataclasses.field()
-    snapshot_prefix: str = dataclasses.field()
-    date_fstring: str = dataclasses.field()
+    windows: typing.List[window_t] = dataclasses.field()
+    snapshot_prefix: str = dataclasses.field(default='ZAM-')
+    date_fstring: str = dataclasses.field(default='%Y-%m-%dT%H:%M:%S')
     def __post_init__(self):
         if list(self.windows) != sorted(list(self.windows), key=lambda x: x.max_age or datetime.timedelta.max):
             raise ValueError(f'{self}\'s windows are not sorted by max_age')
         if list(self.windows) != sorted(list(self.windows), key=lambda x: x.period):
             raise ValueError(f'{self}\'s window periods are not monotonically increasing')
+
     def __str__(self):
         return f'replica_t({self.remote_host}, {self.pool}, {self.dataset})'
 
@@ -173,57 +162,17 @@ class replica_t:
     def delete(self, dest):
         raise Exception('not implemented')
 
-    @staticmethod
-    def from_dict(obj):
-        try:
-            remote_host:str = obj['remote-host']
-        except KeyError:
-            remote_host = None
-        try:
-            ssh_port:int = int(obj['ssh_port'])
-        except KeyError:
-            ssh_port:int = None
-        try:
-            ssh_identity_file:str = obj['identity-file']
-        except KeyError:
-            ssh_identity_file=None
-        pool:str = obj['pool']
-        dataset:str=obj['dataset']
-        windows=[]
-        for ele in obj['windows']:
-            windows.append(window_t.from_dict(ele))
-        try:
-            snapshot_prefix: str = obj['snapshot-prefix']
-        except KeyError:
-            snapshot_prefix = 'ZAM-'
-        try:
-            date_fstring=obj['date-fstring']
-        except KeyError:
-            date_fstring='%Y-%m-%dT%H:%M:%S'
-        return replica_t(
-            remote_host=remote_host,
-            ssh_port=ssh_port,
-            ssh_identity_file=ssh_identity_file,
-            pool=pool,
-            dataset=dataset,
-            windows=windows,
-            snapshot_prefix=snapshot_prefix,
-            date_fstring=date_fstring,
-        )
-
-
-
 @dataclasses.dataclass(frozen=True) #, order=True)
 class managed_dataset_t:
-    source: replica_t
-    destinations: typing.Tuple[replica_t, ...]
+    source: replica_t = dataclasses.field()
+    destinations: typing.List[replica_t] = dataclasses.field()
 
-    snapshot_period: datetime.timedelta
-    replication_period: datetime.timedelta
-    prune_period: datetime.timedelta
+    snapshot_period: datetime.timedelta = dataclasses.field()
+    replication_period: datetime.timedelta = dataclasses.field()
+    prune_period: datetime.timedelta = dataclasses.field()
 
     '''If true, not only will the source dataset be cloned but also all descendent datasets'''
-    recursive: bool = dataclasses.field()
+    recursive: bool = dataclasses.field(default=True)
 
     def __post_init__(self):
         if self.snapshot_period > self.replication_period or self.snapshot_period > self.prune_period:
@@ -241,48 +190,65 @@ class managed_dataset_t:
         pretty_check_returncode(completed.returncode, completed.stderr, f'Failed to take snapshot on {self.source}')
         return snapshot
 
-    @staticmethod
-    def from_dict(obj):
-        source = replica_t.from_dict(obj['source'])
-        destinations=[]
-        for ele in obj['destinations']:
-            destinations.append(replica_t.from_dict(ele))
-        snapshot_period=timedelta_from_dict(obj['snapshot-period'])
-        replication_period=timedelta_from_dict(obj['replication-period'])
-        prune_period=timedelta_from_dict(obj['prune-period'])
-        try:
-            recursive=obj['recursive']
-        except KeyError:
-            recursive=True
-        return managed_dataset_t(
-            source=source,
-            destinations=destinations,
-            snapshot_period=snapshot_period,
-            replication_period=replication_period,
-            prune_period=prune_period,
-            recursive=recursive,
-        )
-
-# TODO: make a config framework?
-#
-# A: it's a pain to have to maintain from_dict functions
-#
-# B: I'd like configs to be able to define default values. e.g. a 'dataset'
-# defined in the top level JSON object would be used as the default dataset for
-# all replicas in all managed_datasets. With a custom library, this could be
-# implemented in __getattr__/__getattribute__ where if the value is not defined
-# locally it recurses up the config struct to find a default value.
 @dataclasses.dataclass(frozen=True)
 class config_t:
-    managed_datasets: typing.Tuple[replica_t]
+    managed_datasets: typing.List[managed_dataset_t] = dataclasses.field()
 
-    @staticmethod
-    def from_dict(obj):
-        managed_datasets = []
-        lst = obj['managed-datasets']
-        for ele in lst:
-            managed_datasets.append(managed_dataset_t.from_dict(ele))
-        return config_t(tuple(managed_datasets))
+primitive_map = {
+    datetime.timedelta: timedelta_from_dict,
+    str: str,
+}
+
+def object_from_dict(type_, value):
+    if type_ in primitive_map:
+        try:
+            return primitive_map[type_](value)
+        except Exception as e:
+            import pdb; pdb.set_trace()
+            pass
+    if hasattr(type_, '__origin__'):
+        if type_.__origin__ is typing.Union:
+            assert(len(type_.__args__) == 2)
+            assert(type_.__args__[1] is type(None))
+            return object_from_dict(type_.__args__[0], value)
+        if type_.__origin__ is list:
+            assert(len(type_.__args__) == 1)
+            subtype = type_.__args__[0]
+            return [ object_from_dict(subtype, x) for x in value ]
+
+    assert(type(value) == dict)
+    assert(hasattr(type_, '__dataclass_fields__'))
+    dct = value
+    # the args to pass to type_' constructor
+    args={}
+
+    # VALIDATE FIELD NAMES
+    expected_names = set(type_.__dataclass_fields__.keys())
+    actual_names = set(dct.keys())
+    extra_names = actual_names - expected_names
+    if len(extra_names) > 0:
+        raise Exception(f'Illegal keys in {type_.__name__}: {extra_names}')
+    questionable_names = expected_names - actual_names
+    missing_names = []
+    for name in questionable_names:
+        field = type_.__dataclass_fields__[name]
+        # if field is an instance of typing.Optional, don't add it to missing_names
+        if hasattr(field.type, '__origin__') and field.type.__origin__ is typing.Union:
+            args[name] = None
+            continue
+        # if the field does not have a default value, add it to missing_names
+        if isinstance(field.default, dataclasses._MISSING_TYPE): # would it be possible / safer to do something like field.default.__class__.__module__ == dataclasses?
+            missing_names.append(name)
+    if len(missing_names) > 0:
+        raise Exception(f'Missing keys for {type_.__name__}: {missing_names}')
+
+    # PARSE FIELDS
+    for name in actual_names:
+        field = type_.__dataclass_fields__[name]
+        args[name] = object_from_dict(field.type, dct[name])
+
+    # CONSTRUCT
+    return type_(**args)
 
 LOG_ERROR=1
 LOG_WARNING=2
@@ -395,7 +361,7 @@ async def main():
             exit(1)
 
     with open(args.config_file_name) as json_file:
-        conf = config_t.from_dict(json.load(json_file))
+        conf = object_from_dict(config_t, json.load(json_file))
     log_t(f'config is: {conf}')
 
     # note that we don't have to worry about the do_* functions running

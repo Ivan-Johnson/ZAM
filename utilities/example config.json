@@ -1,18 +1,18 @@
 {
-    "managed-datasets": [
+    "managed_datasets": [
 	{
 	    "source": {
-		"remote-host": "olympus",
+		"remote_host": "olympus",
 		"pool": "o-nas",
 		"dataset": "zam/tmp_source",
 		"windows": [
-		    {"max-age": {"minutes": 2}, "period": {"seconds": 10}},
-		    {"max-age": {"minutes": 5}, "period": {"minutes": 1}}
+		    {"max_age": {"minutes": 2}, "period": {"seconds": 10}},
+		    {"max_age": {"minutes": 5}, "period": {"minutes": 1}}
 		]
 	    },
 	    "destinations": [
 		{
-		    "remote-host": "olympus",
+		    "remote_host": "olympus",
 		    "pool": "o-nas",
 		    "dataset": "zam/tmp_dest",
 		    "windows": [
@@ -20,9 +20,9 @@
 		    ]
 		}
 	    ],
-	    "snapshot-period": {"seconds": "10"},
-	    "replication-period": {"minutes": "1"},
-	    "prune-period": {"minutes": "1"}
+	    "snapshot_period": {"seconds": 10},
+	    "replication_period": {"minutes": 1},
+	    "prune_period": {"minutes": 1}
 	}
     ]
 }
