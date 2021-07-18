@@ -13,6 +13,7 @@ import types
 import typing
 
 SECONDS_PER_SOLAR_YEAR=31556925
+VERSION='0.2.0.dev0'
 
 def timedelta_from_dict(d):
     years = d.pop('years', None)
@@ -287,8 +288,9 @@ default_configs=[
 
 parser = argparse.ArgumentParser()
 parser.add_argument('--config', '-c', dest='config_file_name', action='store', default=default_configs, help='The location of the script\'s configuration file')
-parser.add_argument('--verbose', '-v', dest='log_level', action='append_const', const=1, default=[], help='Increases verbosity. Can be used multiple times.')
-parser.add_argument('--quiet', '-q', dest='log_level', action='append_const', const=-1, help='Decreases verbosity. Can be used multiple times.')
+parser.add_argument('--verbose', '-v', dest='log_level', action='append_const', const=1, default=[], help='Increases verbosity. Can be used multiple times')
+parser.add_argument('--quiet', '-q', dest='log_level', action='append_const', const=-1, help='Decreases verbosity. Can be used multiple times')
+parser.add_argument('--version', action='store_true', default=False, help='Show the version number')
 
 
 
@@ -350,6 +352,10 @@ async def main():
     args.log_level = LOG_INFO + sum(args.log_level)
 
     log_t(f'Args are: {args}')
+
+    if args.version:
+        print(VERSION)
+        return
 
     if isinstance(args.config_file_name, list):
         for fname in args.config_file_name:
