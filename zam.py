@@ -149,16 +149,16 @@ class replica_t:
         with self.popen(cmd_source, stdout=subprocess.PIPE) as popen_source:
             cmd_dest = ['zfs', 'recv', f'{dest.get_snapshot_full_name(snapshot_new)}']
             with dest.popen(cmd_dest, stdin=popen_source.stdout, stdout=subprocess.PIPE, stderr=subprocess.PIPE) as popen_dest:
-                while True: #do while
-                    time.sleep(1) # TODO: unnecessarily slow for incremental?
-
-                    #TODO inline ternerary is ugly -_-
+                while True: #do while unsuccessful
                     status_source = popen_source.poll()
-                    pretty_check_returncode(status_source, None if popen_source.stderr is None else popen_source.stderr.read(), f'zfs send failed {cmd_source}')
+                    stderr_source = None if popen_source.stderr is None else popen_source.stderr.read()
+                    pretty_check_returncode(status_source, stderr_source, f'zfs send failed {cmd_source}')
                     status_dest = popen_dest.poll()
-                    pretty_check_returncode(status_dest, None if popen_dest.stderr is None else popen_dest.stderr.read(), f'zfs recv failed {cmd_dest}')
+                    stderr_dest = None if popen_dest.stderr is None else popen_dest.stderr.read()
+                    pretty_check_returncode(status_dest, stderr_dest, f'zfs recv failed {cmd_dest}')
                     if status_source == 0 and status_dest == 0:
                         break
+                    time.sleep(1)
 
     def delete(self, dest):
         raise Exception('not implemented')
@@ -291,22 +291,6 @@ parser.add_argument('--config', '-c', dest='config_file_name', action='store', d
 parser.add_argument('--verbose', '-v', dest='log_level', action='append_const', const=1, default=[], help='Increases verbosity. Can be used multiple times')
 parser.add_argument('--quiet', '-q', dest='log_level', action='append_const', const=-1, help='Decreases verbosity. Can be used multiple times')
 parser.add_argument('--version', action='store_true', default=False, help='Show the version number')
-
-
-
-# Instead of systemd timer units, use this?
-# systemd-run --on-active=30 /bin/touch /tmp/foo
-
-# On replication, replicate ALL of the local snapshots that are dated after the
-# newest one on the remote server.
-
-# simplified pruning algorithm:
-# * for each snapshot s
-#   * if s.successor.time - s.predecessor.time < curr_window.period:
-#     * delete s
-#
-# Known issues / edge cases:
-# * Must be careful on border between different windows?
 
 def do_snapshot(mds):
     snapshots=mds.source.list()
