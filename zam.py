@@ -189,6 +189,8 @@ class replica_t:
                         if popen_source.stderr is None
                         else popen_source.stderr.read()
                     )
+                    if stderr_source is None:
+                        raise Exception()
                     pretty_check_returncode(
                         status_source, stderr_source, f"zfs send failed {cmd_source}"
                     )
@@ -196,6 +198,8 @@ class replica_t:
                     stderr_dest = (
                         None if popen_dest.stderr is None else popen_dest.stderr.read()
                     )
+                    if stderr_dest is None:
+                        raise Exception()
                     pretty_check_returncode(
                         status_dest, stderr_dest, f"zfs recv failed {cmd_dest}"
                     )
