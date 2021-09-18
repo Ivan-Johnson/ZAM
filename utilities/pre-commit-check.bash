@@ -7,5 +7,5 @@ set -euo pipefail
 cd "$(dirname "$0")"
 cd ..
 
-mypy *.py # --disallow-any-expr
+mypy *.py --disallow-any-expr
 black *.py

@@ -1,4 +1,7 @@
 #!/bin/python
+# Remove after https://bugs.python.org/issue38605 is resolved (python 3.11?)
+from __future__ import annotations
+
 import argparse
 import asyncio
 import collections
@@ -16,9 +19,9 @@ SECONDS_PER_SOLAR_YEAR = 31556925
 VERSION = "0.2.0.dev0"
 
 
-def timedelta_from_dict(d):
-    years = d.pop("years", None)
-    months = d.pop("months", None)
+def timedelta_from_dict(d: typing.Dict[str, int]) -> datetime.timedelta:
+    years: typing.Optional[int] = d.pop("years", None)
+    months: typing.Optional[int] = d.pop("months", None)
 
     d.setdefault("seconds", 0)
     if years is not None:
@@ -30,7 +33,7 @@ def timedelta_from_dict(d):
 
 def pretty_check_returncode(
     returncode: typing.Optional[int], stderr: bytes, errmsg: str
-):
+) -> None:
     if returncode is not None and returncode != 0:
         print(f"{errmsg}. stderr:")
         string = stderr.decode("utf-8")
@@ -42,12 +45,12 @@ def pretty_check_returncode(
 class snapshot_t:
     datetime: datetime.datetime
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         now = datetime.datetime.utcnow()
         if self.datetime > now:
             raise ValueError("A snapshot with a future date exists")
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"snapshot_t({self.datetime})"
 
 
@@ -70,23 +73,27 @@ class replica_t:
     snapshot_prefix: str = dataclasses.field(default="ZAM-")
     date_fstring: str = dataclasses.field(default="%Y-%m-%dT%H:%M:%S")
 
-    def __post_init__(self):
-        if list(self.windows) != sorted(
-            list(self.windows), key=lambda x: x.max_age or datetime.timedelta.max
-        ):
+    def __post_init__(self) -> None:
+        get_window_max_age: typing.Callable[[window_t], datetime.timedelta] = (
+            lambda x: x.max_age or datetime.timedelta.max
+        )
+        if list(self.windows) != sorted(list(self.windows), key=get_window_max_age):
             raise ValueError(f"{self}'s windows are not sorted by max_age")
-        if list(self.windows) != sorted(list(self.windows), key=lambda x: x.period):
+        get_window_period: typing.Callable[
+            [window_t], datetime.timedelta
+        ] = lambda x: x.period
+        if list(self.windows) != sorted(list(self.windows), key=get_window_period):
             raise ValueError(
                 f"{self}'s window periods are not monotonically increasing"
             )
 
-    def __str__(self):
+    def __str__(self) -> str:
         return f"replica_t({self.remote_host}, {self.pool}, {self.dataset})"
 
-    def get_snapshot_full_name(self, snapshot: snapshot_t):
+    def get_snapshot_full_name(self, snapshot: snapshot_t) -> str:
         return f"{self.pool}/{self.dataset}@{self.snapshot_prefix}{snapshot.datetime.strftime(self.date_fstring)}"
 
-    def __get_ssh_cmd(self):
+    def get_ssh_cmd(self) -> typing.List[str]:
         if self.remote_host is None:
             return []
 
@@ -98,19 +105,11 @@ class replica_t:
         ssh += [self.remote_host]
         return ssh
 
-    def run(self, args, **kwargs):
-        args = self.__get_ssh_cmd() + args
-        log_t(f"Doing `run`: {args} with {kwargs}")
-        return subprocess.run(args, **kwargs)
-
-    def popen(self, args, **kwargs):
-        args = self.__get_ssh_cmd() + args
-        log_t(f"Doing `popen`: {args} with {kwargs}")
-        return subprocess.Popen(args, **kwargs)
-
-    def exists(self):
-        dataset_full_name = f"{self.pool}/{self.dataset}"
-        cmd = self.run(["zfs", "list", "-o", "name"], capture_output=True)
+    def exists(self) -> bool:
+        dataset_full_name: str = f"{self.pool}/{self.dataset}"
+        cmd: subprocess.CompletedProcess[bytes] = subprocess.run(
+            self.get_ssh_cmd() + ["zfs", "list", "-o", "name"], capture_output=True
+        )
         pretty_check_returncode(
             cmd.returncode,
             cmd.stderr,
@@ -122,11 +121,12 @@ class replica_t:
         lines = lines[1:]
         return dataset_full_name in lines
 
-    def list(self):
+    def list(self) -> typing.List[snapshot_t]:
         # step 1: call `zfs list -t snapshot {self}`
         dataset_full_name = f"{self.pool}/{self.dataset}"
-        completed = self.run(
-            ["zfs", "list", "-t", "snapshot", dataset_full_name, "-o", "name"],
+        completed: subprocess.CompletedProcess[bytes] = subprocess.run(
+            self.get_ssh_cmd()
+            + ["zfs", "list", "-t", "snapshot", dataset_full_name, "-o", "name"],
             capture_output=True,
         )
         pretty_check_returncode(
@@ -162,22 +162,34 @@ class replica_t:
         ret.sort()
         return ret
 
-    # TODO: add type hint dest:replica_t
-    def clone_to(self, dest, snapshot_old: snapshot_t, snapshot_new: snapshot_t):
+    def clone_to(
+        self,
+        dest: replica_t,
+        snapshot_old: typing.Optional[snapshot_t],
+        snapshot_new: snapshot_t,
+    ) -> None:
         args_incremental = []
         if snapshot_old is not None:
             args_incremental = ["-i", self.get_snapshot_full_name(snapshot_old)]
 
         # TODO: send with --replicate or maybe --backup? similarly update receive
-        cmd_source = (
+        cmd_source: typing.List[str] = (
             ["zfs", "send"]
             + args_incremental
             + ["--raw", "--verbose", f"{self.get_snapshot_full_name(snapshot_new)}"]
         )
-        with self.popen(cmd_source, stdout=subprocess.PIPE) as popen_source:
-            cmd_dest = ["zfs", "recv", f"{dest.get_snapshot_full_name(snapshot_new)}"]
-            with dest.popen(
-                cmd_dest,
+        with subprocess.Popen(
+            self.get_ssh_cmd() + cmd_source,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        ) as popen_source:
+            cmd_dest: typing.List[str] = [
+                "zfs",
+                "recv",
+                f"{dest.get_snapshot_full_name(snapshot_new)}",
+            ]
+            with subprocess.Popen(
+                dest.get_ssh_cmd() + cmd_dest,
                 stdin=popen_source.stdout,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -207,7 +219,7 @@ class replica_t:
                         break
                     time.sleep(1)
 
-    def delete(self, dest):
+    def delete(self, dest) -> None:
         raise Exception("not implemented")
 
 
@@ -223,7 +235,7 @@ class managed_dataset_t:
     """If true, not only will the source dataset be cloned but also all descendent datasets"""
     recursive: bool = dataclasses.field(default=True)
 
-    def __post_init__(self):
+    def __post_init__(self) -> None:
         if (
             self.snapshot_period > self.replication_period
             or self.snapshot_period > self.prune_period
@@ -232,18 +244,22 @@ class managed_dataset_t:
                 "There is no point in replicating/pruning more often than the rate at which they are created"
             )
 
-    def take_snapshot(self):
-        now = datetime.datetime.utcnow()
+    def take_snapshot(self) -> snapshot_t:
+        now: datetime.datetime = datetime.datetime.utcnow()
         snapshot: snapshot_t = snapshot_t(datetime=now)
         snapshot_fullname: str = self.source.get_snapshot_full_name(snapshot)
 
-        command = ["zfs", "snapshot", snapshot_fullname]
+        command: typing.List[str] = ["zfs", "snapshot", snapshot_fullname]
         if self.recursive:
             command.append("-r")
-        completed = self.source.run(command, capture_output=True)
+        completed: subprocess.CompletedProcess[bytes] = subprocess.run(
+            self.source.get_ssh_cmd() + command, capture_output=True
+        )
+        returncode: int = completed.returncode
+        stderr: bytes = completed.stderr
         pretty_check_returncode(
-            completed.returncode,
-            completed.stderr,
+            returncode,
+            stderr,
             f"Failed to take snapshot on {self.source}",
         )
         return snapshot
@@ -254,6 +270,7 @@ class config_t:
     managed_datasets: typing.List[managed_dataset_t] = dataclasses.field()
 
 
+# TODO: find the correct way of doing this
 primitive_map = {
     datetime.timedelta: timedelta_from_dict,
     str: str,
@@ -262,8 +279,10 @@ primitive_map = {
 
 def object_from_dict(type_, value):
     if type_ in primitive_map:
+        # TODO: remove try/except?
         try:
-            return primitive_map[type_](value)
+            constructor = primitive_map[type_]
+            return constructor(value)
         except Exception as e:
             import pdb
 
@@ -271,6 +290,8 @@ def object_from_dict(type_, value):
             pass
     if hasattr(type_, "__origin__"):
         if type_.__origin__ is typing.Union:
+            # very crude check for optional.
+            # TODO: add support for other types of unions
             assert len(type_.__args__) == 2
             assert type_.__args__[1] is type(None)
             return object_from_dict(type_.__args__[0], value)
@@ -286,7 +307,7 @@ def object_from_dict(type_, value):
     args = {}
 
     # VALIDATE FIELD NAMES
-    expected_names = set(type_.__dataclass_fields__.keys())
+    expected_names = set(typing.get_type_hints(type_).keys())
     actual_names = set(dct.keys())
     extra_names = actual_names - expected_names
     if len(extra_names) > 0:
@@ -294,55 +315,62 @@ def object_from_dict(type_, value):
     questionable_names = expected_names - actual_names
     missing_names = []
     for name in questionable_names:
-        field = type_.__dataclass_fields__[name]
-        # if field is an instance of typing.Optional, don't add it to missing_names
-        if hasattr(field.type, "__origin__") and field.type.__origin__ is typing.Union:
+        # if the field has a default value, ignore it
+        if not isinstance(
+            type_.__dataclass_fields__[name].default, dataclasses._MISSING_TYPE
+        ):  # would it be possible / safer to do something like field.default.__class__.__module__ == dataclasses?
+            continue
+
+        # if the type hint indicates that it is
+        hint = typing.get_type_hints(type_)[name]
+        if hasattr(hint, "__origin__") and hint.__origin__ is typing.Union:
+            assert len(hint.__args__) == 2
+            assert hint.__args__[1] is type(None)
             args[name] = None
             continue
-        # if the field does not have a default value, add it to missing_names
-        if isinstance(
-            field.default, dataclasses._MISSING_TYPE
-        ):  # would it be possible / safer to do something like field.default.__class__.__module__ == dataclasses?
-            missing_names.append(name)
+        missing_names.append(name)
     if len(missing_names) > 0:
         raise Exception(f"Missing keys for {type_.__name__}: {missing_names}")
 
     # PARSE FIELDS
     for name in actual_names:
-        field = type_.__dataclass_fields__[name]
-        args[name] = object_from_dict(field.type, dct[name])
+        field_type = typing.get_type_hints(type_)[name]
+        args[name] = object_from_dict(field_type, dct[name])
 
     # CONSTRUCT
     return type_(**args)
 
 
+log_level: int
+
 LOG_ERROR = 1
-LOG_WARNING = 2
 LOG_INFO = 3
 LOG_TRACE = 4
+LOG_WARNING = 2
 
 
-def log(level, message):
-    if args.log_level >= level:
+def log(level: int, message: str) -> None:
+    if log_level >= level:
         print(message)
 
 
-def log_e(message):
+def log_e(message: str) -> None:
     log(LOG_ERROR, message)
 
 
-def log_w(message):
+def log_w(message: str) -> None:
     log(LOG_WARNING, message)
 
 
-def log_i(message):
+def log_i(message: str) -> None:
     log(LOG_INFO, message)
 
 
-def log_t(message):
+def log_t(message: str) -> None:
     log(LOG_TRACE, message)
 
 
+# TODO: constants should be moved to top of file
 default_config_fname = "zam_config.json"
 
 # from highest to lowest precedence
@@ -357,22 +385,24 @@ default_configs = [
     f"/usr/share/{default_config_fname}",
 ]
 
+# TODO: why isn't this in main?
 parser = argparse.ArgumentParser()
 parser.add_argument(
     "--config",
     "-c",
     dest="config_file_name",
     action="store",
-    default=default_configs,
+    default=None,
     help="The location of the script's configuration file",
 )
+int_list: typing.List[int] = []
 parser.add_argument(
     "--verbose",
     "-v",
     dest="log_level",
     action="append_const",
     const=1,
-    default=[],
+    default=int_list,
     help="Increases verbosity. Can be used multiple times",
 )
 parser.add_argument(
@@ -388,7 +418,7 @@ parser.add_argument(
 )
 
 
-def do_snapshot(mds):
+def do_snapshot(mds: managed_dataset_t) -> datetime.datetime:
     snapshots = mds.source.list()
     if (
         len(snapshots) == 0
@@ -399,7 +429,7 @@ def do_snapshot(mds):
     return snapshots[-1].datetime + mds.snapshot_period
 
 
-def do_replicate(mds):
+def do_replicate(mds: managed_dataset_t) -> datetime.datetime:
     src = mds.source
     snapshots_s = src.list()
     assert len(snapshots_s) > 0
@@ -421,33 +451,39 @@ def do_replicate(mds):
     return datetime.datetime.utcnow() + mds.replication_period
 
 
-def do_prune(mds):
+def do_prune(mds: managed_dataset_t) -> datetime.datetime:
     return datetime.datetime.max
 
 
-async def async_loop(func, datasets):
+async def async_loop(
+    func: typing.Callable[[managed_dataset_t], datetime.datetime],
+    datasets: typing.List[managed_dataset_t],
+) -> int:
     while True:
         next_action = min(map(func, datasets))
         num_sec = (next_action - datetime.datetime.utcnow()).total_seconds()
         await asyncio.sleep(max(1, num_sec))
 
 
-async def main():
+async def main() -> None:
     # args must be global so that, e.g., the log function can access the log level
-    global args
     args = parser.parse_args()
-    args.log_level = LOG_INFO + sum(args.log_level)
+    args_log_level: typing.List[int] = args.log_level
+    global log_level
+    log_level = LOG_INFO + sum(args_log_level)
 
     log_t(f"Args are: {args}")
 
-    if args.version:
+    args_version: bool = args.version
+    if args_version:
         print(VERSION)
         return
 
-    if isinstance(args.config_file_name, list):
-        for fname in args.config_file_name:
+    args_config_file_name: str = args.config_file_name
+    if args_config_file_name is None:
+        for fname in default_configs:
             if os.path.isfile(fname):
-                args.config_file_name = fname
+                args_config_file_name = fname
                 break
         else:
             print(
@@ -456,21 +492,22 @@ async def main():
             )
             exit(1)
 
-    with open(args.config_file_name) as json_file:
-        conf = object_from_dict(config_t, json.load(json_file))
+    with open(args_config_file_name) as json_file:
+        foo: dict[object, object] = json.load(json_file)
+        conf: config_t = object_from_dict(config_t, foo)
     log_t(f"config is: {conf}")
 
     # note that we don't have to worry about the do_* functions running
     # concurrently because they are not asyncronous; only async_loop and main
     # are async.
-    tasks = [
-        asyncio.create_task(
-            async_loop(do_snapshot, conf.managed_datasets), name="snapshot"
-        ),
-        asyncio.create_task(
-            async_loop(do_replicate, conf.managed_datasets), name="replicate"
-        ),
-        asyncio.create_task(async_loop(do_prune, conf.managed_datasets), name="prune"),
+
+    loop_snapshot = async_loop(do_snapshot, conf.managed_datasets)
+    loop_replicate = async_loop(do_replicate, conf.managed_datasets)
+    loop_prune = async_loop(do_prune, conf.managed_datasets)
+    tasks: typing.List[asyncio.Task[int]] = [
+        asyncio.create_task(loop_snapshot, name="snapshot"),
+        asyncio.create_task(loop_replicate, name="replicate"),
+        asyncio.create_task(loop_prune, name="prune"),
     ]
 
     while True:

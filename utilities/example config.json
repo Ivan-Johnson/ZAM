@@ -4,7 +4,7 @@
 	    "source": {
 		"remote_host": "olympus",
 		"pool": "o-nas",
-		"dataset": "zam/tmp_source",
+		"dataset": "tmp/source",
 		"windows": [
 		    {"max_age": {"minutes": 2}, "period": {"seconds": 10}},
 		    {"max_age": {"minutes": 5}, "period": {"minutes": 1}}
@@ -14,14 +14,14 @@
 		{
 		    "remote_host": "olympus",
 		    "pool": "o-nas",
-		    "dataset": "zam/tmp_dest",
+		    "dataset": "tmp/dest",
 		    "windows": [
 			{"period": {"minutes": 5}}
 		    ]
 		}
 	    ],
 	    "snapshot_period": {"seconds": 10},
-	    "replication_period": {"minutes": 1},
+	    "replication_period": {"seconds": 30},
 	    "prune_period": {"minutes": 1}
 	}
     ]
