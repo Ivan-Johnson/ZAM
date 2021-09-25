@@ -11,6 +11,7 @@ import json
 import os
 import subprocess
 import sys
+import textwrap
 import time
 import types
 import typing
@@ -37,7 +38,7 @@ def pretty_check_returncode(
     if returncode is not None and returncode != 0:
         print(f"{errmsg}. stderr:")
         string = stderr.decode("utf-8")
-        print("\t" + string.replace("\n", "\n\t").rstrip("\n\t"))
+        print(textwrap.indent(string, "\t"))
         raise Exception(errmsg)
 
 
