@@ -1,5 +1,7 @@
 [Unit]
 Description=ZFS Automatic Manager
+#StartLimitIntervalSec=9000
+#StartLimitBurst=5
 
 [Service]
 Type=exec
@@ -7,6 +9,7 @@ ExecStart=/usr/bin/zam
 User=zam
 Group=zam
 Nice=5
+RestartSec=900
 
 [Install]
 WantedBy=multi-user.target
