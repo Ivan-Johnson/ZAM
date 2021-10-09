@@ -8,6 +8,7 @@ import collections
 import dataclasses
 import datetime
 import json
+import logging
 import os
 import subprocess
 import sys
@@ -342,35 +343,6 @@ def object_from_dict(type_, value):
     return type_(**args)
 
 
-log_level: int
-
-LOG_ERROR = 1
-LOG_INFO = 3
-LOG_TRACE = 4
-LOG_WARNING = 2
-
-
-def log(level: int, message: str) -> None:
-    if log_level >= level:
-        print(message)
-
-
-def log_e(message: str) -> None:
-    log(LOG_ERROR, message)
-
-
-def log_w(message: str) -> None:
-    log(LOG_WARNING, message)
-
-
-def log_i(message: str) -> None:
-    log(LOG_INFO, message)
-
-
-def log_t(message: str) -> None:
-    log(LOG_TRACE, message)
-
-
 # TODO: constants should be moved to top of file
 default_config_fname = "zam_config.json"
 
@@ -396,23 +368,11 @@ parser.add_argument(
     default=None,
     help="The location of the script's configuration file",
 )
-int_list: typing.List[int] = []
 parser.add_argument(
-    "--verbose",
-    "-v",
-    dest="log_level",
-    action="append_const",
-    const=1,
-    default=int_list,
-    help="Increases verbosity. Can be used multiple times",
-)
-parser.add_argument(
-    "--quiet",
-    "-q",
-    dest="log_level",
-    action="append_const",
-    const=-1,
-    help="Decreases verbosity. Can be used multiple times",
+    "--log-level",
+    choices=["debug", "info", "warning", "error", "critical"],
+    default="warning",
+    help="Case insensitive log level",
 )
 parser.add_argument(
     "--version", action="store_true", default=False, help="Show the version number"
@@ -425,7 +385,7 @@ def do_snapshot(mds: managed_dataset_t) -> datetime.datetime:
         len(snapshots) == 0
         or datetime.datetime.utcnow() - snapshots[-1].datetime > mds.snapshot_period
     ):
-        log_i(f"Taking snapshot on {mds.source}")
+        logging.info(f"Taking snapshot on {mds.source}")
         snapshots.append(mds.take_snapshot())
     return snapshots[-1].datetime + mds.snapshot_period
 
@@ -438,14 +398,14 @@ def do_replicate(mds: managed_dataset_t) -> datetime.datetime:
     for dest in mds.destinations:
         if not dest.exists():
             snapshot = snapshots_s[0]
-            log_i(f"Initializing {dest} with {snapshot} from {src}")
+            logging.info(f"Initializing {dest} with {snapshot} from {src}")
             mds.source.clone_to(dest, None, snapshot)
         snapshots_d = dest.list()
 
         for previous, current in zip(snapshots_s, snapshots_s[1:]):
             assert previous in snapshots_d
             if not current in snapshots_d:
-                log_i(f"Cloning {current} from {src} to {dest}")
+                logging.info(f"Cloning {current} from {src} to {dest}")
                 mds.source.clone_to(dest, previous, current)
                 snapshots_d.append(current)
 
@@ -469,11 +429,17 @@ async def async_loop(
 async def main() -> None:
     # args must be global so that, e.g., the log function can access the log level
     args = parser.parse_args()
-    args_log_level: typing.List[int] = args.log_level
-    global log_level
-    log_level = LOG_INFO + sum(args_log_level)
 
-    log_t(f"Args are: {args}")
+    numeric_level = getattr(logging, args.log_level.upper(), None)
+    if not isinstance(numeric_level, int):
+        raise ValueError(f"Invalid log level: {args.log_level}")
+    logging.basicConfig(
+        level=numeric_level,
+        style="{",
+        format="{asctime:>23} {levelname:>7} {filename:>15} {lineno:>4}: {message}",
+    )
+
+    logging.debug(f"Args are: {args}")
 
     args_version: bool = args.version
     if args_version:
@@ -496,7 +462,7 @@ async def main() -> None:
     with open(args_config_file_name) as json_file:
         foo: dict[object, object] = json.load(json_file)
         conf: config_t = object_from_dict(config_t, foo)
-    log_t(f"config is: {conf}")
+    logging.debug(f"config is: {conf}")
 
     # note that we don't have to worry about the do_* functions running
     # concurrently because they are not asyncronous; only async_loop and main
