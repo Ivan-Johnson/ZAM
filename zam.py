@@ -18,7 +18,7 @@ import types
 import typing
 
 SECONDS_PER_SOLAR_YEAR = 31556925
-VERSION = "0.2.0"
+VERSION = "0.2.1"
 
 
 def timedelta_from_dict(d: typing.Dict[str, int]) -> datetime.timedelta:
@@ -286,9 +286,6 @@ def object_from_dict(type_, value):
             constructor = primitive_map[type_]
             return constructor(value)
         except Exception as e:
-            import pdb
-
-            pdb.set_trace()
             pass
     if hasattr(type_, "__origin__"):
         if type_.__origin__ is typing.Union:
