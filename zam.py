@@ -18,7 +18,7 @@ import types
 import typing
 
 SECONDS_PER_SOLAR_YEAR = 31556925
-VERSION = "0.2.0.dev0"
+VERSION = "0.2.0"
 
 
 def timedelta_from_dict(d: typing.Dict[str, int]) -> datetime.timedelta:
