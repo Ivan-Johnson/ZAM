@@ -18,7 +18,13 @@ import types
 import typing
 
 SECONDS_PER_SOLAR_YEAR = 31556925
-VERSION = "0.2.1"
+# TODO: fetch from setup tools instead. Maybe something like this, assuming that
+# there's a way to get the cfg file from the installed package?
+#
+# from setuptools.config import read_configuration
+# conf_dict = read_configuration("path/to/setup.cfg")
+# VERSION = conf_dict["metadata"]["version"]
+VERSION = "0.3.0.dev0"
 
 
 def timedelta_from_dict(d: typing.Dict[str, int]) -> datetime.timedelta:
@@ -423,7 +429,7 @@ async def async_loop(
         await asyncio.sleep(max(1, num_sec))
 
 
-async def main() -> None:
+async def main_async() -> None:
     # args must be global so that, e.g., the log function can access the log level
     args = parser.parse_args()
 
@@ -486,5 +492,9 @@ async def main() -> None:
         await asyncio.sleep(1)
 
 
+def main():
+    asyncio.run(main_async())
+
+
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
