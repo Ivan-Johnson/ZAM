@@ -9,12 +9,20 @@ and replicating them to remote servers. ZAM is not even able to delete old
 snapshots, although that feature is a top priority.
 
 
-## Development Environment Setup
+## Development Process
 
-Run these commands from the root of the ZAM repository:
+Run these commands from the root of the ZAM repository to setup the development
+environment:
 
     python3 -m venv ".venv" --prompt "ZAM"
     source ".venv/bin/activate"
     .venv/bin/python3 -m pip install --upgrade pip
     pip install -e '.'
     pip install -r requirements_dev.txt
+
+Before each commit, run these commands and fix any issues:
+
+    black src
+    mypy src
+    flake8 src
+    pytest
