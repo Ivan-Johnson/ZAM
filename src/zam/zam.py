@@ -16,6 +16,7 @@ import textwrap
 import time
 import types
 import typing
+import zam
 
 SECONDS_PER_SOLAR_YEAR = 31556925
 # TODO: fetch from setup tools instead. Maybe something like this, assuming that
@@ -24,7 +25,7 @@ SECONDS_PER_SOLAR_YEAR = 31556925
 # from setuptools.config import read_configuration
 # conf_dict = read_configuration("path/to/setup.cfg")
 # VERSION = conf_dict["metadata"]["version"]
-VERSION = "0.3.0.dev0"
+VERSION = "0.3.0.dev1"
 
 
 def timedelta_from_dict(d: typing.Dict[str, int]) -> datetime.timedelta:
@@ -382,54 +383,57 @@ parser.add_argument(
 )
 
 
-def do_snapshot(mds: managed_dataset_t) -> datetime.datetime:
-    snapshots = mds.source.list()
-    if (
-        len(snapshots) == 0
-        or datetime.datetime.utcnow() - snapshots[-1].datetime > mds.snapshot_period
-    ):
-        logging.info(f"Taking snapshot on {mds.source}")
-        snapshots.append(mds.take_snapshot())
-    return snapshots[-1].datetime + mds.snapshot_period
+class snapshoter:
+    def __init__(self, dataset: managed_dataset_t):
+        self.dataset = dataset
+
+    def run(self) -> datetime.datetime:
+        snapshots = self.dataset.source.list()
+        if (
+            len(snapshots) == 0
+            or datetime.datetime.utcnow() - snapshots[-1].datetime
+            > self.dataset.snapshot_period
+        ):
+            logging.info(f"Taking snapshot on {self.dataset.source}")
+            snapshots.append(self.dataset.take_snapshot())
+        return snapshots[-1].datetime + self.dataset.snapshot_period
 
 
-def do_replicate(mds: managed_dataset_t) -> datetime.datetime:
-    src = mds.source
-    snapshots_s = src.list()
-    assert len(snapshots_s) > 0
+class replicator:
+    def __init__(self, dataset: managed_dataset_t):
+        self.dataset = dataset
 
-    for dest in mds.destinations:
-        if not dest.exists():
-            snapshot = snapshots_s[0]
-            logging.info(f"Initializing {dest} with {snapshot} from {src}")
-            mds.source.clone_to(dest, None, snapshot)
-        snapshots_d = dest.list()
+    def run(self) -> datetime.datetime:
+        src = self.dataset.source
+        snapshots_s = src.list()
+        assert len(snapshots_s) > 0
 
-        for previous, current in zip(snapshots_s, snapshots_s[1:]):
-            assert previous in snapshots_d
-            if not current in snapshots_d:
-                logging.info(f"Cloning {current} from {src} to {dest}")
-                mds.source.clone_to(dest, previous, current)
-                snapshots_d.append(current)
+        for dest in self.dataset.destinations:
+            if not dest.exists():
+                snapshot = snapshots_s[0]
+                logging.info(f"Initializing {dest} with {snapshot} from {src}")
+                self.dataset.source.clone_to(dest, None, snapshot)
+            snapshots_d = dest.list()
 
-    return datetime.datetime.utcnow() + mds.replication_period
+            for previous, current in zip(snapshots_s, snapshots_s[1:]):
+                assert previous in snapshots_d
+                if not current in snapshots_d:
+                    logging.info(f"Cloning {current} from {src} to {dest}")
+                    self.dataset.source.clone_to(dest, previous, current)
+                    snapshots_d.append(current)
 
-
-def do_prune(mds: managed_dataset_t) -> datetime.datetime:
-    return datetime.datetime.max
-
-
-async def async_loop(
-    func: typing.Callable[[managed_dataset_t], datetime.datetime],
-    datasets: typing.List[managed_dataset_t],
-) -> int:
-    while True:
-        next_action = min(map(func, datasets))
-        num_sec = (next_action - datetime.datetime.utcnow()).total_seconds()
-        await asyncio.sleep(max(1, num_sec))
+        return datetime.datetime.utcnow() + self.dataset.replication_period
 
 
-async def main_async() -> None:
+class pruner:
+    def __init__(self, dataset: managed_dataset_t):
+        pass
+
+    def run(self) -> typing.Optional[datetime.datetime]:
+        return None
+
+
+def main() -> None:
     # args must be global so that, e.g., the log function can access the log level
     args = parser.parse_args()
 
@@ -467,33 +471,13 @@ async def main_async() -> None:
         conf: config_t = object_from_dict(config_t, foo)
     logging.debug(f"config is: {conf}")
 
-    # note that we don't have to worry about the do_* functions running
-    # concurrently because they are not asyncronous; only async_loop and main
-    # are async.
+    tasks: typing.List[zam.scheduler.task] = []
+    for dataset in conf.managed_datasets:
+        tasks.append(snapshoter(dataset))
+        tasks.append(replicator(dataset))
+        tasks.append(pruner(dataset))
 
-    loop_snapshot = async_loop(do_snapshot, conf.managed_datasets)
-    loop_replicate = async_loop(do_replicate, conf.managed_datasets)
-    loop_prune = async_loop(do_prune, conf.managed_datasets)
-    tasks: typing.List[asyncio.Task[int]] = [
-        asyncio.create_task(loop_snapshot, name="snapshot"),
-        asyncio.create_task(loop_replicate, name="replicate"),
-        asyncio.create_task(loop_prune, name="prune"),
-    ]
-
-    while True:
-        for task in tasks:
-            if task.done():
-                exception = task.exception()
-                if exception is not None:
-                    print(f"A task raised an exception ({task}, {exception})")
-                    raise exception
-                else:
-                    raise Exception(f"A task exited unexpectedly ({task})")
-        await asyncio.sleep(1)
-
-
-def main():
-    asyncio.run(main_async())
+    zam.scheduler.run(tasks)
 
 
 if __name__ == "__main__":
