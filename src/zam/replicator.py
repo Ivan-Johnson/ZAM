@@ -1,11 +1,16 @@
 from zam.config import managed_dataset_t
 import datetime
 import logging
+import typing
 
 
 class replicator:
     def __init__(self, dataset: managed_dataset_t):
         self.dataset = dataset
+        self.last_run = datetime.datetime.utcnow()
+
+    def getNextRuntime(self) -> typing.Optional[datetime.datetime]:
+        return self.last_run + self.dataset.replication_period
 
     def run(self) -> datetime.datetime:
         src = self.dataset.source
@@ -26,4 +31,4 @@ class replicator:
                     self.dataset.source.clone_to(dest, previous, current)
                     snapshots_d.append(current)
 
-        return datetime.datetime.utcnow() + self.dataset.replication_period
+        self.last_run = datetime.datetime.utcnow()

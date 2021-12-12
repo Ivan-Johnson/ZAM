@@ -8,4 +8,7 @@ class pruner:
         pass
 
     def run(self) -> typing.Optional[datetime.datetime]:
+        pass
+
+    def getNextRuntime(self) -> typing.Optional[datetime.datetime]:
         return None

@@ -12,7 +12,7 @@ def test_a(mocker):
     time_now = START_T
 
     task_a = mocker.Mock(name="task_a")
-    task_a.run.side_effect=[
+    task_a.getNextRuntime.side_effect=[
         START_T + 1 * MINUTE,
         START_T + 0 * MINUTE,
         START_T + 3 * MINUTE,
@@ -20,7 +20,7 @@ def test_a(mocker):
     ]
 
     task_b = mocker.Mock(name="task_b")
-    task_b.run.side_effect=[
+    task_b.getNextRuntime.side_effect=[
         START_T + 2 * MINUTE,
         None
     ]
@@ -44,11 +44,15 @@ def test_a(mocker):
         zam.scheduler.run(tasks)
 
     expected_calls = [
+        unittest.mock.call.task_a.getNextRuntime(),
+        unittest.mock.call.task_b.getNextRuntime(),
         unittest.mock.call.task_a.run(),
+        unittest.mock.call.task_a.getNextRuntime(),
+        unittest.mock.call.task_a.run(),
+        unittest.mock.call.task_a.getNextRuntime(),
         unittest.mock.call.task_b.run(),
+        unittest.mock.call.task_b.getNextRuntime(),
         unittest.mock.call.task_a.run(),
-        unittest.mock.call.task_a.run(),
-        unittest.mock.call.task_b.run(),
-        unittest.mock.call.task_a.run(),
+        unittest.mock.call.task_a.getNextRuntime(),
     ]
     assert(manager.mock_calls == expected_calls)
