@@ -26,3 +26,15 @@ Before each commit, run these commands and fix any issues:
     mypy src
     flake8 src
     pytest
+
+## Installation
+
+To install zam itself, simply run these two commands:
+
+    python setup.py build
+    python setup.py install --optimize=1
+
+To install Linux-specific files that may be useful (e.g. example config file,
+systemd service), run this command:
+
+    make install_utils

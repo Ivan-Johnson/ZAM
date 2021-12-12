@@ -50,9 +50,8 @@ all:
 	@echo '"make all" is a NOP'
 
 .PHONY: install
-install:
+install_utils:
 	@echo Installing ZAM
-	$(INSTALL) zam.py $(DESTDIR)$(bindir)/zam
 	$(INSTALLDATA) $(utildir)/"example config.json" $(DESTDIR)$(datadir_zam)/"example config.json"
 
 	$(INSTALLDATA) $(utildir)/user.conf $(DESTDIR)$(systemduserdir)/zam.conf
