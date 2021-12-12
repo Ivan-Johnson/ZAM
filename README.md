@@ -22,7 +22,7 @@ environment:
 
 Before each commit, run these commands and fix any issues:
 
-    black src
+    black --line-length 80 src
     mypy src
     flake8 src
     pytest

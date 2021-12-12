@@ -10,7 +10,8 @@ import typing
 
 
 class task(typing.Protocol):
-    """This protocol must be implemented by classes intended to be run by scheduler"""
+    """This protocol must be implemented by classes intended to be run by
+    scheduler"""
 
     def run(self) -> typing.Optional[datetime.datetime]:
         """This function is called by the scheduler.
@@ -31,13 +32,17 @@ class PrioritizedTask:
 
 
 def run(tasks: typing.List[task]) -> None:
-    heap = list(map(lambda task: PrioritizedTask(datetime.datetime.min, task), tasks))
+    heap = list(
+        map(lambda task: PrioritizedTask(datetime.datetime.min, task), tasks)
+    )
 
     while len(heap) > 0:
         task = heap[0].task
         start = heap[0].start
 
-        seconds_until_start = (start - datetime.datetime.utcnow()).total_seconds()
+        seconds_until_start = (
+            start - datetime.datetime.utcnow()
+        ).total_seconds()
         time.sleep(max(0, seconds_until_start))
 
         now = datetime.datetime.utcnow()
