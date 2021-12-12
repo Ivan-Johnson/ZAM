@@ -4,18 +4,74 @@ skinparam backgroundColor black
 skinparam dpi 300
 
 package "zam" {
-	package "scheduler" {
-		interface task {
-			run(self) -> None
-			getNextRuntime(self) -> Optional[datetime]
-		}
-
-		' TODO issue#19: is there a better way of doing this?
-		class "<<public members>>" {
-			run(tasks: typing.List[task]) -> None
-		}
-
-		"<<public members>>::run" --> task
+	interface task {
+		{static} run_tasks(tasks: typing.List[task]) -> None
+		run(self) -> None
+		getNextRuntime(self) -> Optional[datetime]
 	}
+
+	class snapshot {
+		creation_time: datetime
+		'guid
+	}
+
+	interface SnapDeps {
+		get_snapshots(set[snapshot])
+		take_snapshot() -> snapshot
+	}
+
+	class snapshoter {
+		__init__(SnapDeps, period:timedelta)
+		run()
+		getNextRuntime()
+	}
+
+	snapshoter --|> task
+	snapshoter -- SnapDeps
+
+	interface RepDeps {
+		get_snapshots(set[snapshot])
+		replicate(dest:Location, set[snapshot])
+	}
+
+	interface Location {
+		name:str
+	}
+
+	class replicator {
+		__init__(deps:RepDeps, dest:Location, filter:PruneStrategy, period:timedelta)
+		run()
+		getNextRuntime()
+	}
+
+	replicator --|> task
+	replicator -- RepDeps
+	replicator -- Location
+	replicator -- PruneStrategy
+
+	class pruner {
+		__init__(deps:PrunerDeps, strategy:PruneStrategy, period:timedelta)
+		run()
+		getNextRuntime()
+	}
+
+	interface PruneStrategy {
+		prune(set[snapshot]) -> set[snapshot]
+	}
+
+	interface PrunerDeps {
+		get_snapshots() -> set[snapshot]
+		delete_snapshots() -> set[snapshot]
+	}
+
+	pruner --|> task
+	pruner -- PrunerDeps
+	pruner -- PruneStrategy
+
+	'TODO #17: there's still a lot missing
+	'* need some sort of interfaces for running commands. (implementation handles details such as what machine to SSH into)
+	'  * how to handle pipelines though?
+	'* need ZFS implementations of these interfaces
+	'* last, we need to import the config classes (we want to design for main code first; clean config code is a secondary concern)
 }
 @enduml
