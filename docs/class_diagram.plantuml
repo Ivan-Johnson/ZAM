@@ -1,0 +1,21 @@
+@startuml
+!theme cyborg
+skinparam backgroundColor black
+skinparam dpi 300
+
+package "zam" {
+	package "scheduler" {
+		interface task {
+			run(self) -> None
+			getNextRuntime(self) -> Optional[datetime]
+		}
+
+		' TODO issue#19: is there a better way of doing this?
+		class "<<public members>>" {
+			run(tasks: typing.List[task]) -> None
+		}
+
+		"<<public members>>::run" --> task
+	}
+}
+@enduml
