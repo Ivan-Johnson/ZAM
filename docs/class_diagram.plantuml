@@ -1,3 +1,4 @@
+' -*- mode: Fundamental; compile-command: "./generate.bash" -*-
 @startuml
 !theme cyborg
 skinparam backgroundColor black
@@ -5,73 +6,130 @@ skinparam dpi 300
 
 package "zam" {
 	interface task {
-		{static} run_tasks(tasks: typing.List[task]) -> None
-		run(self) -> None
 		getNextRuntime(self) -> Optional[datetime]
+		run(self) -> None
+		{static} run_tasks(tasks: typing.List[task]) -> None
 	}
 
-	class snapshot {
-		creation_time: datetime
-		'guid
+	interface snapshot {
+		__lt__(self, other) // for sorting & breaking ties in creation_time
+		__str__(self) // for logs
+		creation_time: datetime // necessary for snapshoter scheduling
 	}
+
+	class ZFSSnapshot {
+		__lt__(self, other)
+		__str__(self)
+		creation_time: datetime
+		guid: ???
+	}
+	ZFSSnapshot -up-|>snapshot
 
 	interface SnapDeps {
-		get_snapshots(set[snapshot])
-		take_snapshot() -> snapshot
+		get_snapshots(self, set[snapshot])
+		take_snapshot(self) -> snapshot
 	}
 
 	class snapshoter {
-		__init__(SnapDeps, period:timedelta)
-		run()
-		getNextRuntime()
+		__init__(self, SnapDeps, period:timedelta)
+		getNextRuntime(self)
+		run(self)
 	}
 
-	snapshoter --|> task
+	snapshoter -up-|> task
 	snapshoter -- SnapDeps
 
 	interface RepDeps {
-		get_snapshots(set[snapshot])
-		replicate(dest:Location, set[snapshot])
+		get_snapshots(self, set[snapshot])
+		replicate(self, dest:Location, set[snapshot])
 	}
 
 	interface Location {
-		name:str
+		__str__(self) // for logging
 	}
 
 	class replicator {
-		__init__(deps:RepDeps, dest:Location, filter:PruneStrategy, period:timedelta)
-		run()
-		getNextRuntime()
+		__init__(self, deps:RepDeps, dest:Location, filter:PruneStrategy, period:timedelta)
+		getNextRuntime(self)
+		run(self)
 	}
 
-	replicator --|> task
+	replicator -up-|> task
 	replicator -- RepDeps
 	replicator -- Location
 	replicator -- PruneStrategy
 
 	class pruner {
-		__init__(deps:PrunerDeps, strategy:PruneStrategy, period:timedelta)
-		run()
-		getNextRuntime()
+		__init__(self, deps:PrunerDeps, strategy:PruneStrategy)
+		getNextRuntime(self) // smart; not just run on a loop
+		run(self)
 	}
 
 	interface PruneStrategy {
-		prune(set[snapshot]) -> set[snapshot]
+		prune(self, set[snapshot]) -> set[snapshot]
 	}
 
 	interface PrunerDeps {
-		get_snapshots() -> set[snapshot]
-		delete_snapshots() -> set[snapshot]
+		delete_snapshots(self) -> set[snapshot]
+		get_snapshots(self) -> set[snapshot]
 	}
 
-	pruner --|> task
+	pruner -up-|> task
 	pruner -- PrunerDeps
 	pruner -- PruneStrategy
 
+	class Bucket {
+		'This probably shouldn't be a separate class
+		max_age: typing.Optional[datetime.timedelta]
+		period: datetime.timedelta
+	}
+
+	class BucketPrune {
+		__init__(self, buckets:List[Bucket])
+		prune(self, set[snapshot]) -> set[snapshot]
+	}
+	BucketPrune -up-|> PruneStrategy
+	BucketPrune -- Bucket
+
+	class ZFSLocation {
+		__init__(self, ssh_host:str, ssh_port:str, dataset:str)
+		__str__(self)
+		dataset:str
+		ssh_host:str
+		ssh_port:str
+	}
+	ZFSLocation -up-|> Location
+
+	class LocalZFS {
+		__init__(self, ???)
+		delete_snapshots(self) -> set[snapshot]
+		get_snapshots(self) -> set[snapshot]
+		replicate(self, dest:Location, set[snapshot]) // assert dest isinstance ZFSLocation
+		take_snapshot(self) -> snapshot
+	}
+	LocalZFS -up-|> PrunerDeps
+	LocalZFS -up-|> RepDeps
+	LocalZFS -up-|> SnapDeps
+
+	class RemoteZFS {
+		__init__(self, ???, ZFSLocation)
+		delete_snapshots(self) -> set[snapshot]
+		get_snapshots(self) -> set[snapshot]
+	}
+	RemoteZFS -up-|> PrunerDeps
+
+	package "config" {
+	}
+
 	'TODO #17: there's still a lot missing
-	'* need some sort of interfaces for running commands. (implementation handles details such as what machine to SSH into)
-	'  * how to handle pipelines though?
-	'* need ZFS implementations of these interfaces
-	'* last, we need to import the config classes (we want to design for main code first; clean config code is a secondary concern)
+	'* need to de-duplicate {RemoteZFS,LocalZFS}.{get_snapshots(), delete_snapshots()}
+	'  * maybe a single ZFS class that gets given an interface for running
+	'    commands? It'd have to be a pretty complex interface to support piping
+	'    commands for LocalZFS.replicate(), and that's not even something that
+	'    we need for RemoteZFS...
+	'  * Maybe just common get_{getter,deletor}_command() and
+	'    parse_{getter,deletor}_output() function?
+	'* Design config classes/json structure
 }
+
 @enduml

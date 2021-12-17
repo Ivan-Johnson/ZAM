@@ -49,8 +49,8 @@ class snapshot_t:
 
 @dataclasses.dataclass(frozen=True, order=True)
 class window_t:
-    # We want one snapshot per period going back until max_age in the past.
-    # If max_age is None, keep one snapshot per period for all time.
+    # We want at least one snapshot per period going back until `max_age` in the past.
+    # A `max_age` of none represents the beginning of time
     max_age: typing.Optional[datetime.timedelta] = dataclasses.field()
     period: datetime.timedelta = dataclasses.field(compare=False)
 
