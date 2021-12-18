@@ -94,13 +94,13 @@ def main() -> None:
         conf: config_t = object_from_dict(config_t, foo)
     logging.debug(f"config is: {conf}")
 
-    tasks: typing.List[zam.scheduler.task] = []
+    tasks: typing.List[zam.task.task] = []
     for dataset in conf.managed_datasets:
         tasks.append(snapshoter(dataset))
         tasks.append(replicator(dataset))
         tasks.append(pruner(dataset))
 
-    zam.scheduler.run(tasks)
+    zam.task.run_tasks(tasks)
 
 
 if __name__ == "__main__":

@@ -9,7 +9,7 @@ class replicator:
         self.dataset = dataset
         self.last_run = datetime.datetime.utcnow()
 
-    def getNextRuntime(self) -> typing.Optional[datetime.datetime]:
+    def get_next_runtime(self) -> typing.Optional[datetime.datetime]:
         return self.last_run + self.dataset.replication_period
 
     def run(self) -> datetime.datetime:

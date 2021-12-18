@@ -17,7 +17,7 @@ class task(typing.Protocol):
         """Run the task"""
         ...  # pragma: no cover
 
-    def getNextRuntime(self) -> typing.Optional[datetime.datetime]:
+    def get_next_runtime(self) -> typing.Optional[datetime.datetime]:
         """Get the time to next run the task at.
 
         If this function returns None then this task will not be called again.
@@ -35,9 +35,11 @@ class __PrioritizedTask:
     task: task = dataclasses.field(compare=False)
 
 
-def run(tasks: typing.List[task]) -> None:
+def run_tasks(tasks: typing.List[task]) -> None:
     prioritized_tasks = list(
-        map(lambda task: __PrioritizedTask(task.getNextRuntime(), task), tasks)
+        map(
+            lambda task: __PrioritizedTask(task.get_next_runtime(), task), tasks
+        )
     )
     prioritized_tasks = list(
         filter(lambda pt: pt.start is not None, prioritized_tasks)
@@ -57,7 +59,7 @@ def run(tasks: typing.List[task]) -> None:
         assert now >= start
 
         task.run()
-        next_runtime = task.getNextRuntime()
+        next_runtime = task.get_next_runtime()
         if next_runtime is None:
             heapq.heappop(heap)
         else:

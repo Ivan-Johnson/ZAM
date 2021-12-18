@@ -8,7 +8,7 @@ class snapshoter:
     def __init__(self, dataset: managed_dataset_t):
         self.dataset = dataset
 
-    def getNextRuntime(self) -> typing.Optional[datetime.datetime]:
+    def get_next_runtime(self) -> typing.Optional[datetime.datetime]:
         snapshots = self.dataset.source.list()
         return snapshots[-1].datetime + self.dataset.snapshot_period
 
