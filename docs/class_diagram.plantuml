@@ -6,7 +6,7 @@ skinparam dpi 300
 
 package "zam" {
 	interface task {
-		getNextRuntime(self) -> Optional[datetime]
+		get_next_runtime(self) -> Optional[datetime]
 		run(self) -> None
 		{static} run_tasks(tasks: typing.List[task]) -> None
 	}
@@ -14,119 +14,119 @@ package "zam" {
 	interface snapshot {
 		__lt__(self, other) // for sorting & breaking ties in creation_time
 		__str__(self) // for logs
-		creation_time: datetime // necessary for snapshoter scheduling
+		creation_time: datetime // necessary for snapshot_task scheduling
 	}
 
-	class ZFSSnapshot {
+	class zfs_snapshot {
 		__lt__(self, other)
 		__str__(self)
 		creation_time: datetime
 		guid: ???
 	}
-	ZFSSnapshot -up-|>snapshot
+	zfs_snapshot -up-|> snapshot
 
-	interface SnapDeps {
+	interface snapshoter {
 		get_snapshots(self, set[snapshot])
 		take_snapshot(self) -> snapshot
 	}
 
-	class snapshoter {
-		__init__(self, SnapDeps, period:timedelta)
-		getNextRuntime(self)
+	class snapshot_task {
+		__init__(self, snapshoter:snapshoter, period:timedelta)
+		get_next_runtime(self)
 		run(self)
 	}
 
-	snapshoter -up-|> task
-	snapshoter -- SnapDeps
+	snapshot_task -up-|> task
+	snapshot_task -- snapshoter
 
-	interface RepDeps {
+	interface replicator {
 		get_snapshots(self, set[snapshot])
-		replicate(self, dest:Location, set[snapshot])
+		replicate(self, location:replication_location, set[snapshot])
 	}
 
-	interface Location {
+	interface replication_location {
 		__str__(self) // for logging
 	}
 
-	class replicator {
-		__init__(self, deps:RepDeps, dest:Location, filter:PruneStrategy, period:timedelta)
-		getNextRuntime(self)
+	class replication_task {
+		__init__(self, replicator:replicator, dest:replication_location, filter:prune_strategy, period:timedelta)
+		get_next_runtime(self)
 		run(self)
 	}
 
-	replicator -up-|> task
-	replicator -- RepDeps
-	replicator -- Location
-	replicator -- PruneStrategy
+	replication_task -up-|> task
+	replication_task -- replicator
+	replication_task -- replication_location
+	replication_task -- prune_strategy
 
-	class pruner {
-		__init__(self, deps:PrunerDeps, strategy:PruneStrategy)
-		getNextRuntime(self) // smart; not just run on a loop
+	class prune_task {
+		__init__(self, pruner:pruner, strategy:prune_strategy)
+		get_next_runtime(self) // smart; not just run on a loop
 		run(self)
 	}
 
-	interface PruneStrategy {
+	interface prune_strategy {
 		prune(self, set[snapshot]) -> set[snapshot]
 	}
 
-	interface PrunerDeps {
+	interface pruner {
 		delete_snapshots(self) -> set[snapshot]
 		get_snapshots(self) -> set[snapshot]
 	}
 
-	pruner -up-|> task
-	pruner -- PrunerDeps
-	pruner -- PruneStrategy
+	prune_task -up-|> task
+	prune_task -- pruner
+	prune_task -- prune_strategy
 
-	class Bucket {
+	class bucket {
 		'This probably shouldn't be a separate class
 		max_age: typing.Optional[datetime.timedelta]
 		period: datetime.timedelta
 	}
 
-	class BucketPrune {
-		__init__(self, buckets:List[Bucket])
+	class bucket_prune {
+		__init__(self, buckets:List[bucket])
 		prune(self, set[snapshot]) -> set[snapshot]
 	}
-	BucketPrune -up-|> PruneStrategy
-	BucketPrune -- Bucket
+	bucket_prune -up-|> prune_strategy
+	bucket_prune -- bucket
 
-	class ZFSLocation {
+	class zfs_location {
 		__init__(self, ssh_host:str, ssh_port:str, dataset:str)
 		__str__(self)
 		dataset:str
 		ssh_host:str
 		ssh_port:str
 	}
-	ZFSLocation -up-|> Location
+	zfs_location -up-|> replication_location
 
-	class LocalZFS {
+	class zfs_manager_local {
 		__init__(self, ???)
 		delete_snapshots(self) -> set[snapshot]
 		get_snapshots(self) -> set[snapshot]
-		replicate(self, dest:Location, set[snapshot]) // assert dest isinstance ZFSLocation
+		replicate(self, dest:replication_location, set[snapshot]) // assert dest isinstance zfs_location
 		take_snapshot(self) -> snapshot
 	}
-	LocalZFS -up-|> PrunerDeps
-	LocalZFS -up-|> RepDeps
-	LocalZFS -up-|> SnapDeps
+	zfs_manager_local -up-|> pruner
+	zfs_manager_local -up-|> replicator
+	zfs_manager_local -up-|> snapshoter
 
-	class RemoteZFS {
-		__init__(self, ???, ZFSLocation)
+	class zfs_manager_remote {
+		__init__(self, ???, zfs_location)
 		delete_snapshots(self) -> set[snapshot]
 		get_snapshots(self) -> set[snapshot]
 	}
-	RemoteZFS -up-|> PrunerDeps
+	zfs_manager_remote -up-|> pruner
 
 	package "config" {
 	}
 
 	'TODO #17: there's still a lot missing
-	'* need to de-duplicate {RemoteZFS,LocalZFS}.{get_snapshots(), delete_snapshots()}
+	'* need to de-duplicate {zfs_manager_remote,zfs_manager_local}.{get_snapshots(), delete_snapshots()}
 	'  * maybe a single ZFS class that gets given an interface for running
 	'    commands? It'd have to be a pretty complex interface to support piping
-	'    commands for LocalZFS.replicate(), and that's not even something that
-	'    we need for RemoteZFS...
+	'    commands for zfs_manager_local.replicate(), and that's not even something that
+	'    we need for zfs_manager_remote...
 	'  * Maybe just common get_{getter,deletor}_command() and
 	'    parse_{getter,deletor}_output() function?
 	'* Design config classes/json structure
