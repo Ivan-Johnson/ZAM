@@ -23,7 +23,7 @@ environment:
 Before each commit, run these commands and fix any issues:
 
     black --line-length 80 src
-    mypy src
+    mypy src/zam/task.py
     flake8 src
     pytest
 

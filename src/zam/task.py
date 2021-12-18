@@ -29,27 +29,37 @@ class task(typing.Protocol):
         ...  # pragma: no cover
 
 
-@dataclasses.dataclass(order=True)
+@dataclasses.dataclass
 class __PrioritizedTask:
-    start: datetime.datetime
-    task: task = dataclasses.field(compare=False)
+    start: typing.Optional[datetime.datetime]
+    task: task
+
+    def __lt__(self, other: __PrioritizedTask) -> bool:
+        if self.start is None and other.start is None:
+            return False
+        if self.start is None:
+            return True
+        if other.start is None:
+            return False
+        return bool(self.start < other.start)
+
+
+def __pt_from_task(task: task) -> __PrioritizedTask:
+    return __PrioritizedTask(task.get_next_runtime(), task)
 
 
 def run_tasks(tasks: typing.List[task]) -> None:
-    prioritized_tasks = list(
-        map(
-            lambda task: __PrioritizedTask(task.get_next_runtime(), task), tasks
-        )
-    )
-    prioritized_tasks = list(
-        filter(lambda pt: pt.start is not None, prioritized_tasks)
-    )
+    prioritized_tasks = list(map(__pt_from_task, tasks))
     heapq.heapify(prioritized_tasks)
     heap = prioritized_tasks
 
     while len(heap) > 0:
         task = heap[0].task
         start = heap[0].start
+
+        if start is None:
+            heapq.heappop(heap)
+            continue
 
         timedelta_until_start = start - datetime.datetime.utcnow()
         seconds_until_start = timedelta_until_start.total_seconds()
@@ -59,9 +69,4 @@ def run_tasks(tasks: typing.List[task]) -> None:
         assert now >= start
 
         task.run()
-        next_runtime = task.get_next_runtime()
-        if next_runtime is None:
-            heapq.heappop(heap)
-        else:
-            pt = __PrioritizedTask(next_runtime, task)
-            heapq.heapreplace(heap, pt)
+        heapq.heapreplace(heap, __pt_from_task(task))
