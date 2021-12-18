@@ -26,7 +26,7 @@ package "zam" {
 	zfs_snapshot -up-|> snapshot
 
 	interface snapshoter {
-		get_snapshots(self, set[snapshot])
+		get_snapshots(self) -> set[snapshot]
 		take_snapshot(self) -> snapshot
 	}
 
@@ -40,7 +40,7 @@ package "zam" {
 	snapshot_task -- snapshoter
 
 	interface replicator {
-		get_snapshots(self, set[snapshot])
+		get_snapshots(self) -> set[snapshot]
 		replicate(self, location:replication_location, set[snapshot])
 	}
 
