@@ -134,10 +134,8 @@ package "zam" {
 	zfs_manager -up-|> snapshoter
 
 	package "config" {
+		'TODO #21
 	}
-
-	'TODO #17: there's still a lot missing
-	'* Design config classes/json structure
 }
 
 @enduml
