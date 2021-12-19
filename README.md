@@ -22,9 +22,9 @@ environment:
 
 Before each commit, run these commands and fix any issues:
 
-    black --line-length 80 src
+    black --line-length 80 src tests
     mypy src/zam/task.py
-    flake8 src
+    flake8 src tests
     pytest
 
 ## Installation
