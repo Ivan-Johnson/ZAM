@@ -41,6 +41,7 @@ package "zam" {
 
 	interface replicator {
 		get_snapshots(self) -> set[snapshot]
+		get_remote_snapshots(self, location:replication_location)
 		replicate(self, location:replication_location, set[snapshot])
 	}
 
@@ -103,6 +104,7 @@ package "zam" {
 	class zfs_manager_local {
 		__init__(self, ???)
 		delete_snapshots(self) -> set[snapshot]
+		get_remote_snapshots(self, location:replication_location)
 		get_snapshots(self) -> set[snapshot]
 		replicate(self, dest:replication_location, set[snapshot]) // assert dest isinstance zfs_location
 		take_snapshot(self) -> snapshot
