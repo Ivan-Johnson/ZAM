@@ -120,36 +120,23 @@ package "zam" {
 	}
 	zfs_location -up-|> replication_location
 
-	class zfs_manager_local {
-		__init__(self, ???)
+	class zfs_manager {
+		__init__(self, location:Optional[zfs_location], ???) // location None -> localhost
+		__wrap_command_in_ssh(self, command:List[str]) -> List[str] // return (self.location is None ? [] : [ssh, ${self.host}]) + command
 		delete_snapshots(self) -> set[snapshot]
-		get_remote_snapshots(self, location:replication_location)
+		get_remote_snapshots(self, location:replication_location) // Throws ~ErrorNotSupported if self.location is not None
 		get_snapshots(self) -> set[snapshot]
-		replicate(self, dest:replication_location, set[snapshot]) // assert dest isinstance zfs_location
+		replicate(self, dest:replication_location, set[snapshot]) // assert dest isinstance zfs_location. Throws ~ErrorNotSupported if self.location is not None
 		take_snapshot(self) -> snapshot
 	}
-	zfs_manager_local -up-|> pruner
-	zfs_manager_local -up-|> replicator
-	zfs_manager_local -up-|> snapshoter
-
-	class zfs_manager_remote {
-		__init__(self, ???, zfs_location)
-		delete_snapshots(self) -> set[snapshot]
-		get_snapshots(self) -> set[snapshot]
-	}
-	zfs_manager_remote -up-|> pruner
+	zfs_manager -up-|> pruner
+	zfs_manager -up-|> replicator
+	zfs_manager -up-|> snapshoter
 
 	package "config" {
 	}
 
 	'TODO #17: there's still a lot missing
-	'* need to de-duplicate {zfs_manager_remote,zfs_manager_local}.{get_snapshots(), delete_snapshots()}
-	'  * maybe a single ZFS class that gets given an interface for running
-	'    commands? It'd have to be a pretty complex interface to support piping
-	'    commands for zfs_manager_local.replicate(), and that's not even something that
-	'    we need for zfs_manager_remote...
-	'  * Maybe just common get_{getter,deletor}_command() and
-	'    parse_{getter,deletor}_output() function?
 	'* Design config classes/json structure
 }
 
