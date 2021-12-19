@@ -26,7 +26,7 @@ class replicator:
 
             for previous, current in zip(snapshots_s, snapshots_s[1:]):
                 assert previous in snapshots_d
-                if not current in snapshots_d:
+                if current not in snapshots_d:
                     logging.info(f"Cloning {current} from {src} to {dest}")
                     self.dataset.source.clone_to(dest, previous, current)
                     snapshots_d.append(current)

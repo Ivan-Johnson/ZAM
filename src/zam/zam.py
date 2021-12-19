@@ -1,13 +1,8 @@
 #!/bin/python
 import argparse
-import json
 import logging
-import os
 import typing
 import zam
-from zam.snapshoter import snapshoter
-from zam.replicator import replicator
-from zam.pruner import pruner
 
 # TODO: fetch from setup tools instead. Maybe something like this, assuming that
 # there's a way to get the cfg file from the installed package?
@@ -22,7 +17,8 @@ default_config_fname = "zam_config.json"
 # from highest to lowest precedence
 default_configs = [
     f"/etc/{default_config_fname}",
-    # /usr/local is for sysadmin installed files; other /usr directorys are from the package manager
+    # /usr/local is for sysadmin installed files
+    #   all other directories in /usr are from the package manager
     # host-specific configuration
     f"/usr/local/etc/{default_config_fname}",
     f"/usr/etc/{default_config_fname}",
@@ -55,7 +51,6 @@ def main() -> None:
         help="Show the version number",
     )
 
-    # args must be global so that, e.g., the log function can access the log level
     args = parser.parse_args()
 
     args_version: bool = args.version
@@ -66,10 +61,11 @@ def main() -> None:
     numeric_level = getattr(logging, args.log_level.upper(), None)
     if not isinstance(numeric_level, int):
         raise ValueError(f"Invalid log level: {args.log_level}")
+    strf = "{asctime:>23} {levelname:>7} {filename:>15} {lineno:>4}: {message}"
     logging.basicConfig(
         level=numeric_level,
         style="{",
-        format="{asctime:>23} {levelname:>7} {filename:>15} {lineno:>4}: {message}",
+        format=strf,
     )
 
     logging.debug(f"Args are: {args}")
