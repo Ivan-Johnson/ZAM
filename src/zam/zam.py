@@ -5,10 +5,6 @@ import logging
 import os
 import typing
 import zam
-from zam.config import (
-    config_t,
-    object_from_dict,
-)
 from zam.snapshoter import snapshoter
 from zam.replicator import replicator
 from zam.pruner import pruner
@@ -78,27 +74,10 @@ def main() -> None:
 
     logging.debug(f"Args are: {args}")
 
-    args_config_file_name: str = args.config_file_name
-    if args_config_file_name is None:
-        for fname in default_configs:
-            if os.path.isfile(fname):
-                args_config_file_name = fname
-                break
-        else:
-            raise FileNotFoundError(
-                f"None of the default config files exist ({default_configs})"
-            )
-
-    with open(args_config_file_name) as json_file:
-        foo: dict[object, object] = json.load(json_file)
-        conf: config_t = object_from_dict(config_t, foo)
-    logging.debug(f"config is: {conf}")
+    assert args.config_file_name is None
 
     tasks: typing.List[zam.task.task] = []
-    for dataset in conf.managed_datasets:
-        tasks.append(snapshoter(dataset))
-        tasks.append(replicator(dataset))
-        tasks.append(pruner(dataset))
+    # tasks.append(???)
 
     zam.task.run_tasks(tasks)
 
