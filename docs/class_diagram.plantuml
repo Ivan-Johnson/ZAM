@@ -53,6 +53,17 @@ package "zam" {
 		__init__(self, replicator:replicator, dest:replication_location, filter:prune_strategy, period:timedelta)
 		get_next_runtime(self)
 		run(self)
+
+		' implementation is something like this:
+		'     local = replicator.get_snapshots()
+		'     remote = replicator.get_remote_snapshots(dest)
+		'
+		'     start_time = max(map(lambda snapshot: snapshot.datetime, remote))
+		'     local = filter out all snapshots from local that are start_time or older
+		'     snapshots_to_replicate = union(local, remote) ' pretend to upload everything
+		'     snapshots_to_replicate = prune_strategy.filter(snapshots_to_replicate)
+		'     snapshots_to_replicate = snapshots_to_replicate - remote
+		'     replicator.replicate(snapshots_to_replicate, dest)
 	}
 
 	replication_task -up-|> task
@@ -88,6 +99,14 @@ package "zam" {
 	class bucket_prune {
 		__init__(self, buckets:List[bucket])
 		prune(self, set[snapshot]) -> set[snapshot]
+		' algorith is something like:
+		' keepers = set()
+		' for each bucket:
+		'     snapshots = get all snapshots inside bucket as well as closest neighbors on left and right
+		'     keeper snapshots[0] if it's closer to the start of the bucket than snapshots[1]
+		'     for snapshot in snapshots:
+		'         ???
+		'     keeper snapshots[-1] if it's closer to the end of the bucket than snapshots[-2]
 	}
 	bucket_prune -up-|> prune_strategy
 	bucket_prune -- bucket

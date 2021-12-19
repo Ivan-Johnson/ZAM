@@ -121,6 +121,7 @@ class replica_t:
 
     def list(self) -> typing.List[snapshot_t]:
         # step 1: call `zfs list -t snapshot {self}`
+        # TODO: zfs list -Hpt snapshot -o name,creation
         dataset_full_name = f"{self.pool}/{self.dataset}"
         completed: subprocess.CompletedProcess[bytes] = subprocess.run(
             self.get_ssh_cmd()
